@@ -1,0 +1,48 @@
+#!/bin/sh
+# Runtime setup for Keyboard Colors: group, udev activation, systemd services.
+# Safe to re-run. Assumes the desktop entry, icon, udev rule, and systemd
+# units are already installed at their standard locations (either by the
+# .deb package, or by data/install.sh in a repo checkout).
+set -e
+
+GROUP=kbdlight
+LED_DIR="/sys/class/leds/system76_acpi::kbd_backlight"
+STATE_DIR="/var/lib/keyboardcolors"
+
+TARGET_USER="${SUDO_USER:-}"
+if [ -z "$TARGET_USER" ] && [ -n "${PKEXEC_UID:-}" ]; then
+  TARGET_USER="$(getent passwd "$PKEXEC_UID" | cut -d: -f1)"
+fi
+if [ -z "$TARGET_USER" ]; then
+  TARGET_USER="$(logname 2>/dev/null || true)"
+fi
+if [ -z "$TARGET_USER" ]; then
+  TARGET_USER="${1:-}"
+fi
+
+getent group "$GROUP" >/dev/null 2>&1 || groupadd --system "$GROUP"
+
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+  usermod -aG "$GROUP" "$TARGET_USER"
+else
+  echo "Keyboard Colors: could not determine which user to grant hardware access to." >&2
+  echo "Run: sudo usermod -aG $GROUP <username>" >&2
+fi
+
+udevadm control --reload-rules 2>/dev/null || true
+udevadm trigger --action=add --subsystem-match=leds 2>/dev/null || true
+
+if [ -e "$LED_DIR/color" ]; then
+  chgrp "$GROUP" "$LED_DIR/color" "$LED_DIR/brightness" 2>/dev/null || true
+  chmod 0664 "$LED_DIR/color" "$LED_DIR/brightness" 2>/dev/null || true
+fi
+
+mkdir -p "$STATE_DIR"
+
+systemctl daemon-reload 2>/dev/null || true
+systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
+
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+  echo "Keyboard Colors: $TARGET_USER can now control the keyboard backlight directly."
+  echo "If this is the first time, log out and back in (or reboot) for group membership to apply."
+fi

@@ -1,0 +1,1 @@
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="system76_acpi::kbd_backlight", RUN+="/bin/chgrp kbdlight /sys%p/color", RUN+="/bin/chmod 0664 /sys%p/color", RUN+="/bin/chgrp kbdlight /sys%p/brightness", RUN+="/bin/chmod 0664 /sys%p/brightness"

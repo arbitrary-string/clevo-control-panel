@@ -1,0 +1,17 @@
+[Unit]
+Description=Restore saved System76 keyboard backlight color and brightness on boot
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '\
+  if [ -s /var/lib/keyboardcolors/last_color ]; then \
+    cat /var/lib/keyboardcolors/last_color > /sys/class/leds/system76_acpi::kbd_backlight/color; \
+  fi; \
+  if [ -s /var/lib/keyboardcolors/last_brightness ]; then \
+    cat /var/lib/keyboardcolors/last_brightness > /sys/class/leds/system76_acpi::kbd_backlight/brightness; \
+  fi'
+
+[Install]
+WantedBy=multi-user.target
