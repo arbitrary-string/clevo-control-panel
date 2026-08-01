@@ -17,16 +17,18 @@ same thing from the terminal.
 
 ## About the development process
 
-This was built with Claude (Anthropic's AI coding assistant) as a
-collaborator. I'm a developer going back to BASIC and Visual Basic in the
-1980s, comfortable with bash/PHP/JavaScript, but new to Python and to
-GTK/GNOME app development specifically — this project has doubled as how
-I'm learning both. I drove the design decisions, tested everything on real
-hardware, caught (and asked for fixes to) several real bugs along the way,
+This was built with Claude. I'm a developer (nothing too serious or professional)
+going back to BASIC and Visual Basic in the 80s/90s, comfortable with 
+bash/PHP/JavaScript, but new to Python and to GTK/GNOME app development 
+specifically — this project has doubled as how I'm learning both. I tested 
+everything on real hardware (my Darter Pro 7), caught and fixed bugs,
 and made the calls on architecture, licensing, and distribution. But a
 meaningful share of the actual code was written with AI assistance, and I'd
 rather be upfront about that than have it be a surprise to anyone looking
-through the source.
+through the source. The only reason I'm publishing this at all is because
+I find it genuinely useful, and if you have a Darter Pro 7 running Ubuntu 26.04,
+you probably will too. It easily changes the keyboard back-light colors and brightness,
+and changes persist across reboots. 
 
 ## Features
 
