@@ -55,7 +55,9 @@ theming rather than matching those desktops natively).
 
 ## Installing
 
-**Via the `.deb` (recommended)** — download the latest release asset and:
+**Via the `.deb` (recommended)** — download the `.deb` from the
+[latest release](https://github.com/arbitrary-string/keyboardcolors/releases/latest)
+and:
 
 ```
 sudo apt install ./keyboardcolors_<version>_all.deb
