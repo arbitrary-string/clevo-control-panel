@@ -30,29 +30,37 @@ Desktop compatibility: this is a plain GTK4/libadwaita app, so it also runs
 under KDE Plasma and COSMIC (it will just carry libadwaita's GNOME-style
 theming rather than matching those desktops natively).
 
-## One-time setup
+## Installing
 
-Run once, from a terminal:
+**Via the `.deb` (recommended)** — download the latest release asset and:
+
+```
+sudo apt install ./keyboardcolors_<version>_all.deb
+```
+
+This installs the app, desktop launcher, and icon, and its `postinst` step
+automatically does the one-time system setup below for whoever ran `apt
+install`. **Log out and back in (or reboot) once** afterwards — group
+membership only applies to new login sessions.
+
+**From a repo checkout instead**, run once from a terminal:
 
 ```
 sudo bash data/install.sh "$USER"
 ```
 
-This:
+Either path:
 
 - Creates a `kbdlight` group and adds your user to it
 - Installs a udev rule so the LED device's `color` and `brightness` sysfs
   files are group-writable on every boot
 - Installs and enables two systemd services that save the color/brightness
   on shutdown and restore them on boot
-- Installs a desktop launcher to `~/.local/share/applications`
+- Installs a desktop launcher (and, for the `.deb`, an icon)
 
-**Log out and back in (or reboot) once** afterwards — group membership only
-applies to new login sessions.
-
-The app also has a "Run System Setup" button (System Integration section)
-that does the same thing via `pkexec`, for re-running or recovering from a
-missing setup without opening a terminal.
+The app also has a "Repair Setup" button (gear icon → Settings) that re-runs
+this via `pkexec` — useful if a second user account on the same machine needs
+access, or if something's gotten out of sync.
 
 ## Running
 
@@ -79,3 +87,7 @@ keyboardcolors/   Python package: backend, UI, config, setup helper
 bin/keyboardcolors  Launcher script
 data/             udev rule, systemd units, install script, desktop file
 ```
+
+## License
+
+Copyright (c) 2026 Michael Updike. GPLv3 — see [LICENSE](LICENSE).

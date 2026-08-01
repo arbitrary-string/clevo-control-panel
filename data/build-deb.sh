@@ -63,7 +63,27 @@ install -m 0644 "$REPO_ROOT/data/99-keyboardcolors.rules" \
 
 cp "$REPO_ROOT/README.md" "$PKG_ROOT/usr/share/doc/keyboardcolors/README.md"
 cat > "$PKG_ROOT/usr/share/doc/keyboardcolors/copyright" <<'COPYRIGHT'
-Personal utility, not intended for wider distribution. See README.md.
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: keyboardcolors
+Source: https://github.com/arbitrary-string/keyboardcolors
+
+Files: *
+Copyright: 2026 Michael Updike
+License: GPL-3.0-or-later
+
+License: GPL-3.0-or-later
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+ .
+ On Debian/Ubuntu systems, the complete text of the GNU General Public
+ License version 3 can be found in "/usr/share/common-licenses/GPL-3".
 COPYRIGHT
 
 cat > "$PKG_ROOT/DEBIAN/control" <<CONTROL
@@ -73,7 +93,7 @@ Section: utils
 Priority: optional
 Architecture: $ARCH
 Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1, adwaita-icon-theme, udev, systemd
-Maintainer: mupdike <mupdike@theoaksacademy.org>
+Maintainer: Michael Updike <arbitrarystring@gmail.com>
 Description: Control the System76 keyboard RGB backlight
  GTK4/libadwaita app to set the RGB keyboard backlight color and
  brightness on System76 laptops (system76_acpi driver), with settings
