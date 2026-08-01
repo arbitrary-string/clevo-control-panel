@@ -1,0 +1,98 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! This app only supports System76 laptops
+        with the `system76_acpi` kernel driver (single-zone keyboard
+        backlight), so the hardware/environment details below really help
+        narrow things down.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: false
+
+  - type: input
+    id: laptop-model
+    attributes:
+      label: Laptop model
+      placeholder: e.g. Darter Pro 7
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS / Ubuntu version
+      placeholder: e.g. Ubuntu 26.04 "resolute"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install it?
+      options:
+        - .deb package
+        - Repo checkout (bin/keyboardcolors / install.sh)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: desktop
+    attributes:
+      label: Desktop environment
+      options:
+        - GNOME
+        - KDE Plasma
+        - COSMIC
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: device-check
+    attributes:
+      label: Does the LED device exist on your system?
+      description: |
+        Output of:
+        ```
+        ls -la /sys/class/leds/system76_acpi::kbd_backlight/
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant error output / logs
+      description: >
+        Run it from a terminal (`keyboardcolors` or `./bin/keyboardcolors`)
+        and paste anything printed, including any `Traceback`.
+      render: shell
+    validations:
+      required: false
