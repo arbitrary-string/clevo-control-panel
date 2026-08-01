@@ -17,7 +17,7 @@ same thing from the terminal.
 
 ## About the development process
 
-This was built with Claude. I'm a developer (nothing too serious or professional)
+This was built with Claude. I'm a coder (nothing too serious or professional)
 going back to BASIC and Visual Basic in the 80s/90s, comfortable with 
 bash/PHP/JavaScript, but new to Python and to GTK/GNOME app development 
 specifically — this project has doubled as how I'm learning both. I tested 
