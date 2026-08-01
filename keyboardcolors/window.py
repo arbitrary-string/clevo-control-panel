@@ -44,6 +44,11 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
         header = Adw.HeaderBar()
         toolbar_view.add_top_bar(header)
 
+        settings_btn = Gtk.Button(icon_name="preferences-system-symbolic")
+        settings_btn.set_tooltip_text("System Integration Settings")
+        settings_btn.connect("clicked", self._on_open_settings)
+        header.pack_end(settings_btn)
+
         self.banner = Adw.Banner(title="")
         toolbar_view.add_top_bar(self.banner)
 
@@ -82,7 +87,8 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
 
         main_box.append(self._build_custom_section())
         main_box.append(self._build_brightness_section())
-        main_box.append(self._build_system_section())
+
+        self.settings_window = self._build_settings_window()
 
         self._rebuild_favorites()
 
@@ -203,11 +209,39 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
         self.system_status_label.add_css_class("dim-label")
         box.append(self.system_status_label)
 
-        setup_btn = Gtk.Button(label="Run System Setup")
-        setup_btn.set_halign(Gtk.Align.START)
-        setup_btn.connect("clicked", self._on_run_setup)
-        box.append(setup_btn)
+        self.setup_btn = Gtk.Button(label="Repair Setup")
+        self.setup_btn.set_halign(Gtk.Align.START)
+        self.setup_btn.set_tooltip_text(
+            "Grants this account hardware access and enables boot persistence. "
+            "Only needed if something's not set up correctly, or for another "
+            "user account on this machine that hasn't run it yet."
+        )
+        self.setup_btn.connect("clicked", self._on_run_setup)
+        box.append(self.setup_btn)
         return self._wrap_group("System Integration", box)
+
+    def _build_settings_window(self):
+        dialog = Adw.Dialog()
+        dialog.set_title("Settings")
+        dialog.set_content_width(420)
+        dialog.set_content_height(220)
+
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(Adw.HeaderBar())
+
+        clamp = Adw.Clamp(maximum_size=420)
+        clamp.set_margin_top(18)
+        clamp.set_margin_bottom(18)
+        clamp.set_margin_start(18)
+        clamp.set_margin_end(18)
+        clamp.set_child(self._build_system_section())
+
+        toolbar_view.set_content(clamp)
+        dialog.set_child(toolbar_view)
+        return dialog
+
+    def _on_open_settings(self, _button):
+        self.settings_window.present(self)
 
     # ---- Behavior ----
 
