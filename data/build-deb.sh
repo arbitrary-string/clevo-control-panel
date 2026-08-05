@@ -31,7 +31,7 @@ find "$PKG_ROOT/usr/lib/keyboardcolors/keyboardcolors" -name '__pycache__' -exec
 install -m 0755 "$REPO_ROOT/data/setup-runtime.sh" \
   "$PKG_ROOT/usr/lib/keyboardcolors/setup-runtime.sh"
 
-# Launcher.
+# Launchers.
 cat > "$PKG_ROOT/usr/bin/keyboardcolors" <<'LAUNCHER'
 #!/usr/bin/env python3
 import sys
@@ -44,6 +44,19 @@ if __name__ == "__main__":
     sys.exit(main())
 LAUNCHER
 chmod 0755 "$PKG_ROOT/usr/bin/keyboardcolors"
+
+cat > "$PKG_ROOT/usr/bin/keyboardcolors-cli" <<'LAUNCHER'
+#!/usr/bin/env python3
+import sys
+
+sys.path.insert(0, "/usr/lib/keyboardcolors")
+
+from keyboardcolors.cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())
+LAUNCHER
+chmod 0755 "$PKG_ROOT/usr/bin/keyboardcolors-cli"
 
 # Desktop entry + icon.
 sed 's#__EXEC_PATH__#/usr/bin/keyboardcolors#' "$REPO_ROOT/data/keyboardcolors.desktop.in" \
@@ -94,10 +107,12 @@ Priority: optional
 Architecture: $ARCH
 Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1, adwaita-icon-theme, udev, systemd
 Maintainer: Michael Updike <arbitrarystring@gmail.com>
-Description: Control the System76 keyboard RGB backlight
- GTK4/libadwaita app to set the RGB keyboard backlight color and
- brightness on System76 laptops (system76_acpi driver), with settings
- that persist across reboots.
+Description: Control the keyboard RGB backlight (System76 + generic Clevo)
+ GTK4/libadwaita app and CLI to set keyboard backlight color and
+ brightness, with settings that persist across reboots. Supports
+ System76 laptops (system76_acpi driver) and generic Clevo/Tongfang
+ barebones (clevo-acpi driver; see the clevo-acpi-dkms package for
+ boards that need it enabled first).
 CONTROL
 
 echo "/etc/udev/rules.d/99-keyboardcolors.rules" > "$PKG_ROOT/DEBIAN/conffiles"

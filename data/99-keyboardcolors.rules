@@ -1,1 +1,11 @@
+# System76 (single-zone: one `color` file on the LED classdev itself)
 ACTION=="add", SUBSYSTEM=="leds", KERNEL=="system76_acpi::kbd_backlight", RUN+="/bin/chgrp kbdlight /sys%p/color", RUN+="/bin/chmod 0664 /sys%p/color", RUN+="/bin/chgrp kbdlight /sys%p/brightness", RUN+="/bin/chmod 0664 /sys%p/brightness"
+
+# Generic Clevo/Tongfang (multi-zone: brightness on the LED classdev, per-zone
+# `color_<zone>` files on its parent platform device). The platform device
+# itself is ACPI-enumerated at boot and persists across a driver reload (e.g.
+# a DKMS rebuild), so only the driver *binding* re-fires on reload, as a
+# `bind` uevent rather than `add` -- both are needed.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="clevo-acpi::kbd_backlight", RUN+="/bin/chgrp kbdlight /sys%p/brightness", RUN+="/bin/chmod 0664 /sys%p/brightness"
+ACTION=="add", SUBSYSTEM=="platform", DRIVER=="clevo-acpi", RUN+="/bin/sh -c 'chgrp kbdlight /sys%p/color_left /sys%p/color_center /sys%p/color_right /sys%p/color_numpad /sys%p/color_lightbar; chmod 0664 /sys%p/color_left /sys%p/color_center /sys%p/color_right /sys%p/color_numpad /sys%p/color_lightbar'"
+ACTION=="bind", SUBSYSTEM=="platform", DRIVER=="clevo-acpi", RUN+="/bin/sh -c 'chgrp kbdlight /sys%p/color_left /sys%p/color_center /sys%p/color_right /sys%p/color_numpad /sys%p/color_lightbar; chmod 0664 /sys%p/color_left /sys%p/color_center /sys%p/color_right /sys%p/color_numpad /sys%p/color_lightbar'"

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Keyboard Colors
-Comment=Set and persist your System76 keyboard backlight color
+Comment=Set and persist your keyboard backlight color
 Exec=__EXEC_PATH__
 Icon=com.mupdike.KeyboardColors
 Terminal=false

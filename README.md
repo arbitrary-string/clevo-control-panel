@@ -1,8 +1,17 @@
 # Keyboard Colors
 
-A small GTK4 / libadwaita app for controlling the RGB keyboard backlight on
-System76 laptops (the single-zone `system76_acpi::kbd_backlight` LED device),
-with settings that survive a reboot.
+A small GTK4 / libadwaita app (plus a CLI) for controlling the RGB keyboard
+backlight, with settings that survive a reboot. Two hardware backends are
+auto-detected:
+
+- **System76 laptops** — the single-zone `system76_acpi::kbd_backlight` LED
+  device (e.g. Darter Pro 7).
+- **Generic Clevo/Tongfang barebones** — the multi-zone (left/center/right/
+  numpad/lightbar) `clevo-acpi::kbd_backlight` device used by a much wider
+  range of hardware resold under many brands. Some of these boards need a
+  separate driver-enablement package first to get the kernel recognizing
+  them at all — this app itself doesn't touch drivers, only whichever LED
+  device is already present.
 
 ## Why this exists
 
@@ -15,6 +24,13 @@ solution that worked for me, I built this one instead. It grew out of a set
 of shell aliases + systemd services I'd put together earlier for doing the
 same thing from the terminal.
 
+It later grew a second backend after a separate project (getting the keyboard
+RGB working on a brand-new, not-yet-recognized Clevo barebone) turned up the
+same underlying problem in a more general form: good hardware, backlight
+control that technically exists in the firmware, and no polished way for an
+ordinary user to reach it from Linux. Rather than build a second app, this one
+grew a pluggable backend.
+
 ## About the development process
 
 This was built with Claude. I'm a coder (nothing too serious or professional)
@@ -26,9 +42,10 @@ and made the calls on architecture, licensing, and distribution. But a
 meaningful share of the actual code was written with AI assistance, and I'd
 rather be upfront about that than have it be a surprise to anyone looking
 through the source. The only reason I'm publishing this at all is because
-I find it genuinely useful, and if you have a Darter Pro 7 running Ubuntu 26.04,
-you probably will too. It easily changes the keyboard back-light colors and brightness,
-and changes persist across reboots. 
+I find it genuinely useful, and if you have a Darter Pro 7 (or a generic
+Clevo/Tongfang-based laptop with the `clevo-acpi` LED backend) running a
+recent Ubuntu, you probably will too. It easily changes the keyboard
+back-light colors and brightness, and changes persist across reboots.
 
 ## Features
 
@@ -40,6 +57,9 @@ and changes persist across reboots.
   app, a terminal alias, or the keyboard's own hardware shortcut
 - No root prompts during normal use: a one-time setup grants your user
   direct write access via a dedicated group + udev rule
+- `keyboardcolors-cli` for scripting: static colors (whole-keyboard or a
+  single zone on multi-zone hardware), brightness, and a few built-in
+  lighting effects (color cycle, breathe, per-zone rainbow wave)
 
 ## Requirements
 
@@ -77,11 +97,12 @@ sudo bash data/install.sh "$USER"
 Either path:
 
 - Creates a `kbdlight` group and adds your user to it
-- Installs a udev rule so the LED device's `color` and `brightness` sysfs
-  files are group-writable on every boot
+- Installs a udev rule so the LED device's color and brightness sysfs
+  files are group-writable on every boot (whichever backend is present)
 - Installs and enables two systemd services that save the color/brightness
   on shutdown and restore them on boot
-- Installs a desktop launcher (and, for the `.deb`, an icon)
+- Installs a desktop launcher (and, for the `.deb`, an icon), plus the
+  `keyboardcolors-cli` command
 
 The app also has a "Repair Setup" button (gear icon → Settings) that re-runs
 this via `pkexec` — useful if a second user account on the same machine needs
@@ -90,27 +111,34 @@ access, or if something's gotten out of sync.
 ## Running
 
 ```
-./bin/keyboardcolors
+./bin/keyboardcolors          # GUI
+./bin/keyboardcolors-cli status
+./bin/keyboardcolors-cli color ff00aa
+./bin/keyboardcolors-cli color 00ff00 --zone left   # multi-zone hardware only
+./bin/keyboardcolors-cli brightness 150
+./bin/keyboardcolors-cli effect breathe --color 00ffff
 ```
 
 or launch "Keyboard Colors" from your app grid after setup.
 
 ## How persistence works
 
-`/sys/class/leds/.../color` and `.../brightness` are virtual files that reset
-on every boot. `save-keyboard-color.service` runs just before shutdown/reboot
-and copies the current values to `/var/lib/keyboardcolors/`;
-`restore-keyboard-color.service` runs early at boot and writes them back. This
-captures changes made any way — this app, a shell alias, or the keyboard's
-own Fn-key color shortcut — since it reads the live hardware state rather
-than tracking who changed it.
+The LED device's sysfs files are virtual and reset on every boot.
+`save-keyboard-color.service` runs `keyboardcolors-cli save-state` just
+before shutdown/reboot, which writes the current brightness and per-zone
+color(s) to `/var/lib/keyboardcolors/state.json`;
+`restore-keyboard-color.service` runs `keyboardcolors-cli restore-state`
+early at boot and writes them back. This captures changes made any way —
+this app, the CLI, or the keyboard's own Fn-key color shortcut — since it
+reads the live hardware state rather than tracking who changed it.
 
 ## Project layout
 
 ```
-keyboardcolors/   Python package: backend, UI, config, setup helper
-bin/keyboardcolors  Launcher script
-data/             udev rule, systemd units, install script, desktop file
+keyboardcolors/            Python package: backend, UI, CLI, config, setup helper
+bin/keyboardcolors          GUI launcher script
+bin/keyboardcolors-cli       CLI launcher script
+data/                       udev rule, systemd units, install script, desktop file
 ```
 
 ## License

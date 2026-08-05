@@ -1,14 +1,11 @@
 [Unit]
-Description=Save System76 keyboard backlight color and brightness before shutdown
+Description=Save keyboard backlight color and brightness before shutdown
 DefaultDependencies=no
 Before=shutdown.target reboot.target halt.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c '\
-  cat /sys/class/leds/system76_acpi::kbd_backlight/color > /var/lib/keyboardcolors/last_color 2>/dev/null; \
-  cat /sys/class/leds/system76_acpi::kbd_backlight/brightness > /var/lib/keyboardcolors/last_brightness 2>/dev/null; \
-  true'
+ExecStart=/usr/bin/keyboardcolors-cli save-state /var/lib/keyboardcolors/state.json
 
 [Install]
 WantedBy=shutdown.target reboot.target halt.target

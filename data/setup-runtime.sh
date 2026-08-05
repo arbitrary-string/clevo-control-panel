@@ -6,7 +6,8 @@
 set -e
 
 GROUP=kbdlight
-LED_DIR="/sys/class/leds/system76_acpi::kbd_backlight"
+S76_LED_DIR="/sys/class/leds/system76_acpi::kbd_backlight"
+CLEVO_LED_DIR="/sys/class/leds/clevo-acpi::kbd_backlight"
 STATE_DIR="/var/lib/keyboardcolors"
 
 TARGET_USER="${SUDO_USER:-}"
@@ -30,11 +31,23 @@ else
 fi
 
 udevadm control --reload-rules 2>/dev/null || true
-udevadm trigger --action=add --subsystem-match=leds 2>/dev/null || true
+udevadm trigger --action=add --subsystem-match=leds --subsystem-match=platform 2>/dev/null || true
 
-if [ -e "$LED_DIR/color" ]; then
-  chgrp "$GROUP" "$LED_DIR/color" "$LED_DIR/brightness" 2>/dev/null || true
-  chmod 0664 "$LED_DIR/color" "$LED_DIR/brightness" 2>/dev/null || true
+if [ -e "$S76_LED_DIR/color" ]; then
+  chgrp "$GROUP" "$S76_LED_DIR/color" "$S76_LED_DIR/brightness" 2>/dev/null || true
+  chmod 0664 "$S76_LED_DIR/color" "$S76_LED_DIR/brightness" 2>/dev/null || true
+fi
+
+if [ -e "$CLEVO_LED_DIR/brightness" ]; then
+  chgrp "$GROUP" "$CLEVO_LED_DIR/brightness" 2>/dev/null || true
+  chmod 0664 "$CLEVO_LED_DIR/brightness" 2>/dev/null || true
+  for zone in left center right numpad lightbar; do
+    zf="$CLEVO_LED_DIR/device/color_$zone"
+    if [ -e "$zf" ]; then
+      chgrp "$GROUP" "$zf" 2>/dev/null || true
+      chmod 0664 "$zf" 2>/dev/null || true
+    fi
+  done
 fi
 
 mkdir -p "$STATE_DIR"
