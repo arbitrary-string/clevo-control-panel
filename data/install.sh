@@ -37,6 +37,12 @@ install -m 0644 "$SCRIPT_DIR/99-keyboardcolors.rules" /etc/udev/rules.d/99-keybo
 install -m 0644 "$SCRIPT_DIR/save-keyboard-color.service" /etc/systemd/system/save-keyboard-color.service
 install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system/restore-keyboard-color.service
 
+# The systemd units above hardcode /usr/bin/keyboardcolors-cli (an absolute
+# path, since a .deb install would provide it there). A repo checkout has no
+# such file on PATH otherwise, so symlink it in.
+ln -sf "$SCRIPT_DIR/../bin/keyboardcolors-cli" /usr/bin/keyboardcolors-cli
+ln -sf "$SCRIPT_DIR/../bin/keyboardcolors" /usr/bin/keyboardcolors
+
 USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 APPS_DIR="$USER_HOME/.local/share/applications"
 ICON_DIR="$USER_HOME/.local/share/icons/hicolor/scalable/apps"
