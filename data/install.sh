@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-time system setup for a repo checkout of Keyboard Colors (not the .deb,
-# which handles this via postinst + data/setup-runtime.sh instead).
+# One-time system setup for a repo checkout of Clevo Control Panel (not the
+# .deb, which handles this via postinst + data/setup-runtime.sh instead).
 # Run as root (via sudo or pkexec). Safe to re-run.
 set -euo pipefail
 
@@ -24,7 +24,7 @@ if [ -z "$TARGET_USER" ]; then
   exit 1
 fi
 
-echo "Setting up Keyboard Colors for user: $TARGET_USER"
+echo "Setting up Clevo Control Panel for user: $TARGET_USER"
 
 # 0. Runtime dependency: PyGObject's cairo integration, needed to draw the
 #    color swatches. Ships as a separate package from python3-gi on Debian/Ubuntu.
@@ -33,26 +33,26 @@ if command -v apt-get >/dev/null 2>&1 && ! dpkg -s python3-gi-cairo >/dev/null 2
 fi
 
 # 1. Static files a .deb would normally place via its own file list.
-install -m 0644 "$SCRIPT_DIR/99-keyboardcolors.rules" /etc/udev/rules.d/99-keyboardcolors.rules
+install -m 0644 "$SCRIPT_DIR/99-clevo-control-panel.rules" /etc/udev/rules.d/99-clevo-control-panel.rules
 install -m 0644 "$SCRIPT_DIR/save-keyboard-color.service" /etc/systemd/system/save-keyboard-color.service
 install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system/restore-keyboard-color.service
 
-# The systemd units above hardcode /usr/bin/keyboardcolors-cli (an absolute
-# path, since a .deb install would provide it there). A repo checkout has no
-# such file on PATH otherwise, so symlink it in.
-ln -sf "$SCRIPT_DIR/../bin/keyboardcolors-cli" /usr/bin/keyboardcolors-cli
-ln -sf "$SCRIPT_DIR/../bin/keyboardcolors" /usr/bin/keyboardcolors
+# The systemd units above hardcode /usr/bin/clevo-control-panel-cli (an
+# absolute path, since a .deb install would provide it there). A repo
+# checkout has no such file on PATH otherwise, so symlink it in.
+ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel-cli" /usr/bin/clevo-control-panel-cli
+ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel" /usr/bin/clevo-control-panel
 
 USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 APPS_DIR="$USER_HOME/.local/share/applications"
 ICON_DIR="$USER_HOME/.local/share/icons/hicolor/scalable/apps"
 sudo -u "$TARGET_USER" mkdir -p "$APPS_DIR" "$ICON_DIR"
-sed "s#__EXEC_PATH__#$SCRIPT_DIR/../bin/keyboardcolors#" "$SCRIPT_DIR/keyboardcolors.desktop.in" \
-  > "$APPS_DIR/keyboardcolors.desktop"
-chown "$TARGET_USER:$TARGET_USER" "$APPS_DIR/keyboardcolors.desktop"
+sed "s#__EXEC_PATH__#$SCRIPT_DIR/../bin/clevo-control-panel#" "$SCRIPT_DIR/clevo-control-panel.desktop.in" \
+  > "$APPS_DIR/clevo-control-panel.desktop"
+chown "$TARGET_USER:$TARGET_USER" "$APPS_DIR/clevo-control-panel.desktop"
 install -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" \
-  "$SCRIPT_DIR/icons/hicolor/scalable/apps/com.mupdike.KeyboardColors.svg" \
-  "$ICON_DIR/com.mupdike.KeyboardColors.svg"
+  "$SCRIPT_DIR/icons/hicolor/scalable/apps/com.mupdike.ClevoControlPanel.svg" \
+  "$ICON_DIR/com.mupdike.ClevoControlPanel.svg"
 sudo -u "$TARGET_USER" gtk-update-icon-cache -q -t -f "$USER_HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
 # 2. Runtime activation: group, udev trigger, systemd enable (shared with the
@@ -61,8 +61,8 @@ sudo -u "$TARGET_USER" gtk-update-icon-cache -q -t -f "$USER_HOME/.local/share/i
 
 echo
 echo "Setup complete."
-if ! id -nG "$TARGET_USER" | grep -qw kbdlight; then
+if ! id -nG "$TARGET_USER" | grep -qw clevoctl; then
   echo "NOTE: could not confirm group membership; check 'groups $TARGET_USER'."
 fi
-echo "If $TARGET_USER was just added to the 'kbdlight' group for the first time,"
+echo "If $TARGET_USER was just added to the 'clevoctl' group for the first time,"
 echo "log out and back in (or reboot) for that membership to take effect."

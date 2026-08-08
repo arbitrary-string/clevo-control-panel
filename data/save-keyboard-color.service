@@ -5,7 +5,7 @@ Before=shutdown.target reboot.target halt.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/keyboardcolors-cli save-state /var/lib/keyboardcolors/state.json
+ExecStart=/usr/bin/clevo-control-panel-cli keyboard save-state /var/lib/clevo-control-panel/state.json
 
 [Install]
 WantedBy=shutdown.target reboot.target halt.target

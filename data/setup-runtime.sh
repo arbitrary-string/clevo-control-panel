@@ -1,14 +1,14 @@
 #!/bin/sh
-# Runtime setup for Keyboard Colors: group, udev activation, systemd services.
-# Safe to re-run. Assumes the desktop entry, icon, udev rule, and systemd
-# units are already installed at their standard locations (either by the
-# .deb package, or by data/install.sh in a repo checkout).
+# Runtime setup for Clevo Control Panel: group, udev activation, systemd
+# services. Safe to re-run. Assumes the desktop entry, icon, udev rule, and
+# systemd units are already installed at their standard locations (either by
+# the .deb package, or by data/install.sh in a repo checkout).
 set -e
 
-GROUP=kbdlight
+GROUP=clevoctl
 S76_LED_DIR="/sys/class/leds/system76_acpi::kbd_backlight"
 CLEVO_LED_DIR="/sys/class/leds/clevo-acpi::kbd_backlight"
-STATE_DIR="/var/lib/keyboardcolors"
+STATE_DIR="/var/lib/clevo-control-panel"
 
 TARGET_USER="${SUDO_USER:-}"
 if [ -z "$TARGET_USER" ] && [ -n "${PKEXEC_UID:-}" ]; then
@@ -26,7 +26,7 @@ getent group "$GROUP" >/dev/null 2>&1 || groupadd --system "$GROUP"
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   usermod -aG "$GROUP" "$TARGET_USER"
 else
-  echo "Keyboard Colors: could not determine which user to grant hardware access to." >&2
+  echo "Clevo Control Panel: could not determine which user to grant hardware access to." >&2
   echo "Run: sudo usermod -aG $GROUP <username>" >&2
 fi
 
@@ -48,6 +48,15 @@ if [ -e "$CLEVO_LED_DIR/brightness" ]; then
       chmod 0664 "$zf" 2>/dev/null || true
     fi
   done
+  # Battery charge thresholds, if this clevo-acpi build has flexicharger
+  # support. Same platform device as the color_<zone> files above.
+  for attr in charge_control_start_threshold charge_control_end_threshold; do
+    af="$CLEVO_LED_DIR/device/$attr"
+    if [ -e "$af" ]; then
+      chgrp "$GROUP" "$af" 2>/dev/null || true
+      chmod 0664 "$af" 2>/dev/null || true
+    fi
+  done
 fi
 
 mkdir -p "$STATE_DIR"
@@ -56,6 +65,6 @@ systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
 
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
-  echo "Keyboard Colors: $TARGET_USER can now control the keyboard backlight directly."
+  echo "Clevo Control Panel: $TARGET_USER can now control the keyboard backlight and battery charge thresholds directly."
   echo "If this is the first time, log out and back in (or reboot) for group membership to apply."
 fi

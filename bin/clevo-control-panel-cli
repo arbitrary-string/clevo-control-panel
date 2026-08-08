@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-from keyboardcolors.cli import main
+from clevo_control_panel.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

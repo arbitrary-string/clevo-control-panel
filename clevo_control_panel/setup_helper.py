@@ -13,7 +13,7 @@ from gi.repository import Gio, GLib
 # does group/udev/systemd activation).
 CANDIDATE_SCRIPTS = [
     Path(__file__).resolve().parent.parent / "data" / "install.sh",
-    Path("/usr/lib/keyboardcolors/setup-runtime.sh"),
+    Path("/usr/lib/clevo-control-panel/setup-runtime.sh"),
 ]
 
 

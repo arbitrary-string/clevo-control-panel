@@ -1,9 +1,9 @@
-"""Persistent user config (favorite colors) stored under ~/.config/keyboardcolors."""
+"""Persistent user config (favorite colors) stored under ~/.config/clevo-control-panel."""
 
 import json
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".config" / "keyboardcolors"
+CONFIG_DIR = Path.home() / ".config" / "clevo-control-panel"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 

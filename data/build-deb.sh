@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds a .deb for Keyboard Colors. Produces dist/keyboardcolors_<ver>_all.deb
-# but does NOT install it — that's a separate, deliberate step
-# (sudo apt install ./dist/keyboardcolors_*.deb).
+# Builds a .deb for Clevo Control Panel. Produces
+# dist/clevo-control-panel_<ver>_all.deb but does NOT install it — that's a
+# separate, deliberate step (sudo apt install ./dist/clevo-control-panel_*.deb).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="$(python3 -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from keyboardcolors import __version__; print(__version__)")"
-PKG_NAME=keyboardcolors
+VERSION="$(python3 -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from clevo_control_panel import __version__; print(__version__)")"
+PKG_NAME=clevo-control-panel
 ARCH=all
 
 BUILD_DIR="$(mktemp -d)"
@@ -15,55 +15,55 @@ PKG_ROOT="$BUILD_DIR/${PKG_NAME}_${VERSION}_${ARCH}"
 
 mkdir -p "$PKG_ROOT"/DEBIAN
 mkdir -p "$PKG_ROOT"/usr/bin
-mkdir -p "$PKG_ROOT"/usr/lib/keyboardcolors
+mkdir -p "$PKG_ROOT"/usr/lib/clevo-control-panel
 mkdir -p "$PKG_ROOT"/usr/share/applications
 mkdir -p "$PKG_ROOT"/usr/share/icons/hicolor/scalable/apps
-mkdir -p "$PKG_ROOT"/usr/share/doc/keyboardcolors
+mkdir -p "$PKG_ROOT"/usr/share/doc/clevo-control-panel
 mkdir -p "$PKG_ROOT"/usr/lib/systemd/system
 mkdir -p "$PKG_ROOT"/etc/udev/rules.d
 
 # Python package.
-cp -r "$REPO_ROOT/keyboardcolors" "$PKG_ROOT/usr/lib/keyboardcolors/keyboardcolors"
-find "$PKG_ROOT/usr/lib/keyboardcolors/keyboardcolors" -name '__pycache__' -exec rm -rf {} +
+cp -r "$REPO_ROOT/clevo_control_panel" "$PKG_ROOT/usr/lib/clevo-control-panel/clevo_control_panel"
+find "$PKG_ROOT/usr/lib/clevo-control-panel/clevo_control_panel" -name '__pycache__' -exec rm -rf {} +
 
 # Shared runtime setup script: used by postinst, and by the in-app
 # "Run System Setup" button if it ever needs to be re-run.
 install -m 0755 "$REPO_ROOT/data/setup-runtime.sh" \
-  "$PKG_ROOT/usr/lib/keyboardcolors/setup-runtime.sh"
+  "$PKG_ROOT/usr/lib/clevo-control-panel/setup-runtime.sh"
 
 # Launchers.
-cat > "$PKG_ROOT/usr/bin/keyboardcolors" <<'LAUNCHER'
+cat > "$PKG_ROOT/usr/bin/clevo-control-panel" <<'LAUNCHER'
 #!/usr/bin/env python3
 import sys
 
-sys.path.insert(0, "/usr/lib/keyboardcolors")
+sys.path.insert(0, "/usr/lib/clevo-control-panel")
 
-from keyboardcolors.__main__ import main
+from clevo_control_panel.__main__ import main
 
 if __name__ == "__main__":
     sys.exit(main())
 LAUNCHER
-chmod 0755 "$PKG_ROOT/usr/bin/keyboardcolors"
+chmod 0755 "$PKG_ROOT/usr/bin/clevo-control-panel"
 
-cat > "$PKG_ROOT/usr/bin/keyboardcolors-cli" <<'LAUNCHER'
+cat > "$PKG_ROOT/usr/bin/clevo-control-panel-cli" <<'LAUNCHER'
 #!/usr/bin/env python3
 import sys
 
-sys.path.insert(0, "/usr/lib/keyboardcolors")
+sys.path.insert(0, "/usr/lib/clevo-control-panel")
 
-from keyboardcolors.cli import main
+from clevo_control_panel.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())
 LAUNCHER
-chmod 0755 "$PKG_ROOT/usr/bin/keyboardcolors-cli"
+chmod 0755 "$PKG_ROOT/usr/bin/clevo-control-panel-cli"
 
 # Desktop entry + icon.
-sed 's#__EXEC_PATH__#/usr/bin/keyboardcolors#' "$REPO_ROOT/data/keyboardcolors.desktop.in" \
-  > "$PKG_ROOT/usr/share/applications/keyboardcolors.desktop"
+sed 's#__EXEC_PATH__#/usr/bin/clevo-control-panel#' "$REPO_ROOT/data/clevo-control-panel.desktop.in" \
+  > "$PKG_ROOT/usr/share/applications/clevo-control-panel.desktop"
 install -m 0644 \
-  "$REPO_ROOT/data/icons/hicolor/scalable/apps/com.mupdike.KeyboardColors.svg" \
-  "$PKG_ROOT/usr/share/icons/hicolor/scalable/apps/com.mupdike.KeyboardColors.svg"
+  "$REPO_ROOT/data/icons/hicolor/scalable/apps/com.mupdike.ClevoControlPanel.svg" \
+  "$PKG_ROOT/usr/share/icons/hicolor/scalable/apps/com.mupdike.ClevoControlPanel.svg"
 
 # Systemd units + udev rule (installed under package-managed paths, not
 # /etc/systemd/system, which is reserved for local admin-created units).
@@ -71,14 +71,14 @@ install -m 0644 "$REPO_ROOT/data/save-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/save-keyboard-color.service"
 install -m 0644 "$REPO_ROOT/data/restore-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/restore-keyboard-color.service"
-install -m 0644 "$REPO_ROOT/data/99-keyboardcolors.rules" \
-  "$PKG_ROOT/etc/udev/rules.d/99-keyboardcolors.rules"
+install -m 0644 "$REPO_ROOT/data/99-clevo-control-panel.rules" \
+  "$PKG_ROOT/etc/udev/rules.d/99-clevo-control-panel.rules"
 
-cp "$REPO_ROOT/README.md" "$PKG_ROOT/usr/share/doc/keyboardcolors/README.md"
-cat > "$PKG_ROOT/usr/share/doc/keyboardcolors/copyright" <<'COPYRIGHT'
+cp "$REPO_ROOT/README.md" "$PKG_ROOT/usr/share/doc/clevo-control-panel/README.md"
+cat > "$PKG_ROOT/usr/share/doc/clevo-control-panel/copyright" <<'COPYRIGHT'
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: keyboardcolors
-Source: https://github.com/arbitrary-string/keyboardcolors
+Upstream-Name: clevo-control-panel
+Source: https://github.com/arbitrary-string/clevo-control-panel
 
 Files: *
 Copyright: 2026 Michael Updike
@@ -107,22 +107,24 @@ Priority: optional
 Architecture: $ARCH
 Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1, adwaita-icon-theme, udev, systemd
 Maintainer: Michael Updike <arbitrarystring@gmail.com>
-Description: Control the keyboard RGB backlight (System76 + generic Clevo)
- GTK4/libadwaita app and CLI to set keyboard backlight color and
- brightness, with settings that persist across reboots. Supports
- System76 laptops (system76_acpi driver) and generic Clevo/Tongfang
- barebones (clevo-acpi driver; see the clevo-acpi-dkms package for
- boards that need it enabled first).
+Description: Control keyboard RGB backlight and battery charge thresholds
+ GTK4/libadwaita app and CLI for hardware features on System76 laptops and
+ generic Clevo/Tongfang barebones: keyboard backlight color and brightness,
+ and (on clevo-acpi driver builds with flexicharger support) battery charge
+ threshold control, all persisting across reboots. Supports System76 laptops
+ (system76_acpi driver) and generic Clevo/Tongfang barebones (clevo-acpi
+ driver; see the clevo-acpi-dkms package for boards that need it enabled
+ first).
 CONTROL
 
-echo "/etc/udev/rules.d/99-keyboardcolors.rules" > "$PKG_ROOT/DEBIAN/conffiles"
+echo "/etc/udev/rules.d/99-clevo-control-panel.rules" > "$PKG_ROOT/DEBIAN/conffiles"
 
 cat > "$PKG_ROOT/DEBIAN/postinst" <<'POSTINST'
 #!/bin/sh
 set -e
 case "$1" in
   configure)
-    /usr/lib/keyboardcolors/setup-runtime.sh || true
+    /usr/lib/clevo-control-panel/setup-runtime.sh || true
     ;;
 esac
 exit 0
@@ -139,7 +141,7 @@ case "$1" in
     ;;
 esac
 if [ "$1" = "purge" ]; then
-  rm -rf /var/lib/keyboardcolors
+  rm -rf /var/lib/clevo-control-panel
 fi
 exit 0
 POSTRM

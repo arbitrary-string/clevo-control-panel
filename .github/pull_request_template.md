@@ -8,6 +8,6 @@
 
 ## Checklist
 
-- [ ] Tested on real System76 hardware (if this touches backend/hardware logic)
+- [ ] Tested on real hardware (System76 or Clevo/Tongfang, as applicable) if this touches backend/hardware logic
 - [ ] Updated README.md if user-facing behavior changed
-- [ ] Bumped `__version__` in `keyboardcolors/__init__.py` if this warrants a new release
+- [ ] Bumped `__version__` in `clevo_control_panel/__init__.py` if this warrants a new release

@@ -5,10 +5,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug! This app only supports System76 laptops
-        with the `system76_acpi` kernel driver (single-zone keyboard
-        backlight), so the hardware/environment details below really help
-        narrow things down.
+        Thanks for reporting a bug! This app supports System76 laptops with
+        the `system76_acpi` kernel driver (single-zone keyboard backlight),
+        and generic Clevo/Tongfang barebones with the `clevo-acpi` kernel
+        driver (multi-zone keyboard backlight, and on some builds battery
+        charge threshold control), so the hardware/environment details below
+        really help narrow things down.
 
   - type: textarea
     id: description
@@ -57,7 +59,7 @@ body:
       label: How did you install it?
       options:
         - .deb package
-        - Repo checkout (bin/keyboardcolors / install.sh)
+        - Repo checkout (bin/clevo-control-panel / install.sh)
     validations:
       required: true
 
@@ -76,11 +78,13 @@ body:
   - type: textarea
     id: device-check
     attributes:
-      label: Does the LED device exist on your system?
+      label: Does the LED/battery device exist on your system?
       description: |
-        Output of:
+        Output of whichever applies:
         ```
         ls -la /sys/class/leds/system76_acpi::kbd_backlight/
+        ls -la /sys/class/leds/clevo-acpi::kbd_backlight/
+        ls -la /sys/class/leds/clevo-acpi::kbd_backlight/device/
         ```
       render: shell
     validations:
@@ -91,8 +95,9 @@ body:
     attributes:
       label: Relevant error output / logs
       description: >
-        Run it from a terminal (`keyboardcolors` or `./bin/keyboardcolors`)
-        and paste anything printed, including any `Traceback`.
+        Run it from a terminal (`clevo-control-panel` or
+        `./bin/clevo-control-panel`) and paste anything printed, including
+        any `Traceback`.
       render: shell
     validations:
       required: false

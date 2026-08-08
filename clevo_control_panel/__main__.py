@@ -1,10 +1,10 @@
 import sys
 
-from .app import KeyboardColorsApp
+from .app import ClevoControlPanelApp
 
 
 def main():
-    app = KeyboardColorsApp()
+    app = ClevoControlPanelApp()
     return app.run(sys.argv)
 
 

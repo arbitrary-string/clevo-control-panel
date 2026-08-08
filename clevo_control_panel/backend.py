@@ -138,6 +138,13 @@ class KeyboardBacklight:
         return self._impl.zones
 
     @property
+    def device_dir(self):
+        """The backing platform device directory, if the active backend has
+        one (only the Clevo/Tongfang backend does -- it's where sibling
+        features like battery charge thresholds also live). None otherwise."""
+        return getattr(self._impl, "device_dir", None)
+
+    @property
     def max_brightness(self):
         return self._impl.max_brightness
 

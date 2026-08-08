@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Keyboard Colors
-Comment=Set and persist your keyboard backlight color
-Exec=__EXEC_PATH__
-Icon=com.mupdike.KeyboardColors
-Terminal=false
-Categories=Utility;Settings;
-StartupWMClass=com.mupdike.KeyboardColors

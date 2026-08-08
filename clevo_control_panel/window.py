@@ -15,13 +15,14 @@ from . import colors as colors_mod
 from . import config
 from . import setup_helper
 from .backend import BacklightError, KeyboardBacklight
+from .battery import ChargeThresholdError, ChargeThresholds
 
 
-class KeyboardColorsWindow(Adw.ApplicationWindow):
+class ClevoControlPanelWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.set_title("Keyboard Colors")
-        self.set_default_size(460, 720)
+        self.set_title("Clevo Control Panel")
+        self.set_default_size(760, 720)
 
         try:
             self.backend = KeyboardBacklight()
@@ -30,24 +31,101 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
             self.backend = None
             self._backend_error = str(e)
 
+        try:
+            self.battery = ChargeThresholds(
+                self.backend.device_dir if self.backend else None
+            )
+            self._battery_error = None
+        except ChargeThresholdError as e:
+            self.battery = None
+            self._battery_error = str(e)
+
         self._brightness_debounce_id = None
+        self._threshold_debounce_id = None
         self._current_hex = "000000"
 
         self._build_ui()
         self._refresh_status()
         self._refresh_system_status()
+        self._refresh_battery_status()
 
-    # ---- UI construction ----
+    # ---- Top-level UI construction ----
 
     def _build_ui(self):
+        # Built before the sidebar, since selecting the initial sidebar row
+        # fires _on_sidebar_row_selected() immediately, which needs these.
+        self.keyboard_page = self._build_keyboard_page()
+        self.battery_page = self._build_battery_page()
+
+        self.split_view = Adw.NavigationSplitView()
+        self.split_view.set_min_sidebar_width(180)
+        self.split_view.set_max_sidebar_width(220)
+        self.split_view.set_sidebar(self._build_sidebar())
+        self.split_view.set_content(self.keyboard_page)
+
+        self.set_content(self.split_view)
+
+        self.settings_window = self._build_settings_window()
+
+        self._rebuild_favorites()
+
+    def _build_sidebar(self):
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(Adw.HeaderBar())
+
+        listbox = Gtk.ListBox()
+        listbox.add_css_class("navigation-sidebar")
+        listbox.append(self._make_sidebar_row("input-keyboard-symbolic", "Keyboard"))
+        listbox.append(self._make_sidebar_row("battery-good-symbolic", "Battery"))
+        listbox.connect("row-selected", self._on_sidebar_row_selected)
+        listbox.select_row(listbox.get_row_at_index(0))
+
+        toolbar_view.set_content(listbox)
+
+        page = Adw.NavigationPage(title="Clevo Control Panel")
+        page.set_child(toolbar_view)
+        return page
+
+    @staticmethod
+    def _make_sidebar_row(icon_name, title):
+        row = Gtk.ListBoxRow()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        box.set_margin_top(8)
+        box.set_margin_bottom(8)
+        box.set_margin_start(12)
+        box.set_margin_end(12)
+        box.append(Gtk.Image.new_from_icon_name(icon_name))
+        box.append(Gtk.Label(label=title, xalign=0))
+        row.set_child(box)
+        row.page_name = title.lower()
+        return row
+
+    def _on_sidebar_row_selected(self, _listbox, row):
+        if row is None:
+            return
+        page = self.keyboard_page if row.page_name == "keyboard" else self.battery_page
+        self.split_view.set_content(page)
+
+    def _wrap_group(self, title, child_widget):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        label = Gtk.Label(label=title, xalign=0)
+        label.add_css_class("heading")
+        box.append(label)
+        box.append(child_widget)
+        return box
+
+    # ---- Keyboard page ----
+
+    def _build_keyboard_page(self):
         toolbar_view = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        toolbar_view.add_top_bar(header)
+        header.set_title_widget(Adw.WindowTitle(title="Keyboard"))
 
         settings_btn = Gtk.Button(icon_name="preferences-system-symbolic")
         settings_btn.set_tooltip_text("System Integration Settings")
         settings_btn.connect("clicked", self._on_open_settings)
         header.pack_end(settings_btn)
+        toolbar_view.add_top_bar(header)
 
         self.banner = Adw.Banner(title="")
         toolbar_view.add_top_bar(self.banner)
@@ -68,7 +146,6 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
         scroller.set_child(clamp)
         self.toast_overlay.set_child(scroller)
         toolbar_view.set_content(self.toast_overlay)
-        self.set_content(toolbar_view)
 
         main_box.append(self._build_current_section())
 
@@ -88,17 +165,9 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
         main_box.append(self._build_custom_section())
         main_box.append(self._build_brightness_section())
 
-        self.settings_window = self._build_settings_window()
-
-        self._rebuild_favorites()
-
-    def _wrap_group(self, title, child_widget):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        label = Gtk.Label(label=title, xalign=0)
-        label.add_css_class("heading")
-        box.append(label)
-        box.append(child_widget)
-        return box
+        page = Adw.NavigationPage(title="Keyboard")
+        page.set_child(toolbar_view)
+        return page
 
     def _build_current_section(self):
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -202,6 +271,151 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
         self.brightness_scale.connect("value-changed", self._on_brightness_changed)
         box.append(self.brightness_scale)
         return self._wrap_group("Brightness", box)
+
+    # ---- Battery page ----
+
+    def _build_battery_page(self):
+        toolbar_view = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Adw.WindowTitle(title="Battery"))
+
+        settings_btn = Gtk.Button(icon_name="preferences-system-symbolic")
+        settings_btn.set_tooltip_text("System Integration Settings")
+        settings_btn.connect("clicked", self._on_open_settings)
+        header.pack_end(settings_btn)
+        toolbar_view.add_top_bar(header)
+
+        self.battery_banner = Adw.Banner(title="")
+        toolbar_view.add_top_bar(self.battery_banner)
+
+        self.battery_toast_overlay = Adw.ToastOverlay()
+
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        clamp = Adw.Clamp(maximum_size=520)
+        clamp.set_margin_top(12)
+        clamp.set_margin_bottom(24)
+        clamp.set_margin_start(12)
+        clamp.set_margin_end(12)
+
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        clamp.set_child(main_box)
+        scroller.set_child(clamp)
+        self.battery_toast_overlay.set_child(scroller)
+        toolbar_view.set_content(self.battery_toast_overlay)
+
+        main_box.append(self._build_threshold_section())
+
+        page = Adw.NavigationPage(title="Battery")
+        page.set_child(toolbar_view)
+        return page
+
+    def _build_threshold_section(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+
+        explainer = Gtk.Label(
+            label=(
+                "Limit the battery's charge range to reduce long-term wear. "
+                "Charging resumes at the start percentage and stops at the "
+                "end percentage."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+        explainer.add_css_class("dim-label")
+        box.append(explainer)
+
+        grid = Gtk.Grid(row_spacing=12, column_spacing=12)
+
+        start_label = Gtk.Label(label="Start charging at", xalign=0)
+        grid.attach(start_label, 0, 0, 1, 1)
+        self.start_threshold_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
+        self.start_threshold_spin.set_hexpand(True)
+        self.start_threshold_spin.connect(
+            "value-changed", self._on_threshold_changed
+        )
+        grid.attach(self.start_threshold_spin, 1, 0, 1, 1)
+        grid.attach(Gtk.Label(label="%"), 2, 0, 1, 1)
+
+        end_label = Gtk.Label(label="Stop charging at", xalign=0)
+        grid.attach(end_label, 0, 1, 1, 1)
+        self.end_threshold_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
+        self.end_threshold_spin.set_hexpand(True)
+        self.end_threshold_spin.connect("value-changed", self._on_threshold_changed)
+        grid.attach(self.end_threshold_spin, 1, 1, 1, 1)
+        grid.attach(Gtk.Label(label="%"), 2, 1, 1, 1)
+
+        box.append(grid)
+
+        refresh_btn = Gtk.Button(label="Refresh from hardware")
+        refresh_btn.set_halign(Gtk.Align.START)
+        refresh_btn.connect("clicked", lambda b: self._refresh_battery_status())
+        box.append(refresh_btn)
+
+        return self._wrap_group("Charge Thresholds", box)
+
+    def _on_threshold_changed(self, _spin):
+        if not self.battery:
+            return
+        if self._threshold_debounce_id is not None:
+            GLib.source_remove(self._threshold_debounce_id)
+        start = int(self.start_threshold_spin.get_value())
+        end = int(self.end_threshold_spin.get_value())
+        self._threshold_debounce_id = GLib.timeout_add(
+            300, self._apply_thresholds, start, end
+        )
+
+    def _apply_thresholds(self, start, end):
+        self._threshold_debounce_id = None
+        try:
+            self.battery.set_start(start)
+            self.battery.set_end(end)
+        except (OSError, ValueError) as e:
+            self._battery_toast(f"Couldn't set charge thresholds: {e}")
+        return GLib.SOURCE_REMOVE
+
+    def _refresh_battery_status(self):
+        if not self.battery:
+            self.battery_banner.set_title(
+                self._battery_error
+                or "No compatible battery charge threshold control found."
+            )
+            self.battery_banner.set_revealed(True)
+            self.start_threshold_spin.set_sensitive(False)
+            self.end_threshold_spin.set_sensitive(False)
+            return
+
+        try:
+            start = self.battery.get_start()
+            end = self.battery.get_end()
+        except OSError as e:
+            self._battery_toast(f"Couldn't read charge thresholds: {e}")
+            return
+
+        for spin, value in (
+            (self.start_threshold_spin, start),
+            (self.end_threshold_spin, end),
+        ):
+            if not spin.has_focus():
+                spin.set_value(value)
+
+        writable = self.battery.is_writable()
+        self.start_threshold_spin.set_sensitive(writable)
+        self.end_threshold_spin.set_sensitive(writable)
+        if writable:
+            self.battery_banner.set_revealed(False)
+        else:
+            self.battery_banner.set_title(
+                "No write access to charge threshold control yet. Run "
+                "system setup below."
+            )
+            self.battery_banner.set_revealed(True)
+
+    def _battery_toast(self, message):
+        self.battery_toast_overlay.add_toast(Adw.Toast(title=message, timeout=4))
+
+    # ---- Settings dialog ----
 
     def _build_system_section(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -362,9 +576,15 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
             self.banner.set_revealed(True)
 
         persistence_ok = self._persistence_enabled()
+        battery_status = (
+            "yes" if self.battery and self.battery.is_writable() else "no"
+        )
         self.system_status_label.set_label(
-            "Direct hardware access: {}\nBoot persistence service: {}".format(
+            "Keyboard hardware access: {}\n"
+            "Battery threshold access: {}\n"
+            "Boot persistence service: {}".format(
                 "yes" if writable else "no",
+                battery_status,
                 "enabled" if persistence_ok else "not enabled",
             )
         )
@@ -390,6 +610,7 @@ class KeyboardColorsWindow(Adw.ApplicationWindow):
             def _update():
                 self._toast(message)
                 self._refresh_system_status()
+                self._refresh_battery_status()
 
             GLib.idle_add(_update)
 
