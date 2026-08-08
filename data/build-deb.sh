@@ -71,6 +71,10 @@ install -m 0644 "$REPO_ROOT/data/save-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/save-keyboard-color.service"
 install -m 0644 "$REPO_ROOT/data/restore-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/restore-keyboard-color.service"
+install -m 0644 "$REPO_ROOT/data/save-performance-mode.service" \
+  "$PKG_ROOT/usr/lib/systemd/system/save-performance-mode.service"
+install -m 0644 "$REPO_ROOT/data/restore-performance-mode.service" \
+  "$PKG_ROOT/usr/lib/systemd/system/restore-performance-mode.service"
 install -m 0644 "$REPO_ROOT/data/99-clevo-control-panel.rules" \
   "$PKG_ROOT/etc/udev/rules.d/99-clevo-control-panel.rules"
 
@@ -107,14 +111,14 @@ Priority: optional
 Architecture: $ARCH
 Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1, adwaita-icon-theme, udev, systemd
 Maintainer: Michael Updike <arbitrarystring@gmail.com>
-Description: Control keyboard RGB backlight and battery charge thresholds
+Description: Control keyboard RGB backlight, battery, and performance mode
  GTK4/libadwaita app and CLI for hardware features on System76 laptops and
  generic Clevo/Tongfang barebones: keyboard backlight color and brightness,
- and (on clevo-acpi driver builds with flexicharger support) battery charge
- threshold control, all persisting across reboots. Supports System76 laptops
- (system76_acpi driver) and generic Clevo/Tongfang barebones (clevo-acpi
- driver; see the clevo-acpi-dkms package for boards that need it enabled
- first).
+ and (on supporting clevo-acpi driver builds) battery charge threshold and
+ performance/fan mode control, all persisting across reboots. Supports
+ System76 laptops (system76_acpi driver) and generic Clevo/Tongfang
+ barebones (clevo-acpi driver; see the clevo-acpi-dkms package for boards
+ that need it enabled first).
 CONTROL
 
 echo "/etc/udev/rules.d/99-clevo-control-panel.rules" > "$PKG_ROOT/DEBIAN/conffiles"
@@ -137,6 +141,7 @@ set -e
 case "$1" in
   remove|purge)
     systemctl disable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
+    systemctl disable --now save-performance-mode.service restore-performance-mode.service 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
     ;;
 esac

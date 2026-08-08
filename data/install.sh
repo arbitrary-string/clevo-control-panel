@@ -36,6 +36,8 @@ fi
 install -m 0644 "$SCRIPT_DIR/99-clevo-control-panel.rules" /etc/udev/rules.d/99-clevo-control-panel.rules
 install -m 0644 "$SCRIPT_DIR/save-keyboard-color.service" /etc/systemd/system/save-keyboard-color.service
 install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system/restore-keyboard-color.service
+install -m 0644 "$SCRIPT_DIR/save-performance-mode.service" /etc/systemd/system/save-performance-mode.service
+install -m 0644 "$SCRIPT_DIR/restore-performance-mode.service" /etc/systemd/system/restore-performance-mode.service
 
 # The systemd units above hardcode /usr/bin/clevo-control-panel-cli (an
 # absolute path, since a .deb install would provide it there). A repo

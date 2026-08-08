@@ -93,10 +93,11 @@ running a recent Ubuntu, you probably will too.
 - Max Fan pins both fans at high speed regardless of actual temperature
   until you switch away from it — it's a manual cooling-boost override, not
   a normal thermal profile, so it's called out separately in the app
-- Unlike battery thresholds, this doesn't persist across a reboot (there's
-  no known way to read the live hardware state back, so the app can only
-  restore what it remembers, and doesn't try to) — it resets to Balanced
-  each boot
+- Reboot persistence: the driver caches the mode you last set (even though
+  it can't read it back from real hardware), so the same
+  save-before-shutdown/restore-at-boot systemd service pattern used for
+  keyboard color works here too — the cached value is read and saved right
+  before shutdown, and reapplied at boot
 
 **All**
 - No root prompts during normal use: a one-time setup grants your user
@@ -145,8 +146,9 @@ Either path:
 - Installs a udev rule so the relevant sysfs files (LED color/brightness,
   and battery charge thresholds/performance mode if present) are
   group-writable on every boot
-- Installs and enables two systemd services that save the keyboard
-  color/brightness on shutdown and restore them on boot
+- Installs and enables four systemd services that save the keyboard
+  color/brightness and performance mode on shutdown and restore them on
+  boot
 - Installs a desktop launcher (and, for the `.deb`, an icon), plus the
   `clevo-control-panel-cli` command
 
@@ -189,10 +191,15 @@ software uses), so they already survive a reboot without any systemd
 service — the sysfs files just reflect whatever's currently stored there.
 
 Performance mode is different again: there's no known way to read the
-live value back from hardware, so the driver only remembers what it last
-set in memory. That means it can't be restored on boot the way keyboard
-color/brightness are, and it resets to Balanced (the EC's own apparent
-power-on default) every time.
+live value back from real hardware, only what the driver last set (cached
+in kernel memory, which the `performance_mode` sysfs file reports). That's
+still enough for the same save/restore pattern as keyboard color to work:
+`save-performance-mode.service` reads that cached value and writes it to
+`/var/lib/clevo-control-panel/performance-mode.state` before shutdown;
+`restore-performance-mode.service` reads it back and reapplies it at
+boot. If the driver module itself is ever reloaded independently of a
+reboot (e.g. a DKMS rebuild), the cache resets to Balanced until the next
+save/restore cycle.
 
 ## Project layout
 

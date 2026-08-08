@@ -64,6 +64,7 @@ mkdir -p "$STATE_DIR"
 
 systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
+systemctl enable --now save-performance-mode.service restore-performance-mode.service 2>/dev/null || true
 
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   echo "Clevo Control Panel: $TARGET_USER can now control the keyboard backlight, battery charge thresholds, and performance mode directly."

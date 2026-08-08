@@ -728,7 +728,12 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             )
             self.banner.set_revealed(True)
 
-        persistence_ok = self._persistence_enabled()
+        keyboard_persistence_ok = self._persistence_enabled(
+            "restore-keyboard-color.service"
+        )
+        performance_persistence_ok = self._persistence_enabled(
+            "restore-performance-mode.service"
+        )
         battery_status = (
             "yes" if self.battery and self.battery.is_writable() else "no"
         )
@@ -739,19 +744,21 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             "Keyboard hardware access: {}\n"
             "Battery threshold access: {}\n"
             "Performance mode access: {}\n"
-            "Boot persistence service: {}".format(
+            "Keyboard boot persistence: {}\n"
+            "Performance mode boot persistence: {}".format(
                 "yes" if writable else "no",
                 battery_status,
                 performance_status,
-                "enabled" if persistence_ok else "not enabled",
+                "enabled" if keyboard_persistence_ok else "not enabled",
+                "enabled" if performance_persistence_ok else "not enabled",
             )
         )
 
     @staticmethod
-    def _persistence_enabled():
+    def _persistence_enabled(service_name):
         try:
             proc = Gio.Subprocess.new(
-                ["systemctl", "is-enabled", "restore-keyboard-color.service"],
+                ["systemctl", "is-enabled", service_name],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
             )
             ok, stdout, _stderr = proc.communicate_utf8(None)

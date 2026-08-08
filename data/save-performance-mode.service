@@ -1,0 +1,11 @@
+[Unit]
+Description=Save performance/fan mode before shutdown
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/clevo-control-panel-cli performance save-state /var/lib/clevo-control-panel/performance-mode.state
+
+[Install]
+WantedBy=shutdown.target reboot.target halt.target
