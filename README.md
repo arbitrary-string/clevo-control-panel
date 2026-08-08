@@ -51,7 +51,7 @@ for how it works. The mapping this app uses was determined empirically
 (observing real fan RPM response to sustained CPU load for each candidate
 EC command value, with the laptop fully cooled down between isolated
 tests) rather than from any spec — see
-`~/laptopissues/battery-threshold/NOTES.md` in that project's development
+`~/laptopissues/performance-mode/NOTES.md` in that project's development
 history for the raw data, if you're curious or trying to validate this on
 different hardware.
 
