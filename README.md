@@ -89,15 +89,22 @@ running a recent Ubuntu, you probably will too.
   across reboots on their own — no separate persistence service needed
 
 **Performance** (clevo-acpi backend only, driver-dependent)
-- Switch between Balanced, Quiet, Performance, and Max Fan modes
+- Switch between Balanced, Quiet, Performance, and Max Fan modes, from the
+  app window, the tray icon menu, or the CLI
 - Max Fan pins both fans at high speed regardless of actual temperature
   until you switch away from it — it's a manual cooling-boost override, not
   a normal thermal profile, so it's called out separately in the app
-- Reboot persistence: the driver caches the mode you last set (even though
-  it can't read it back from real hardware), so the same
-  save-before-shutdown/restore-at-boot systemd service pattern used for
-  keyboard color works here too — the cached value is read and saved right
-  before shutdown, and reapplied at boot
+- Reboot persistence: the mode you set is saved the moment you set it, and
+  restored once the desktop is fully up at your next login (not via an
+  early-boot systemd service — see "How persistence works" below for why)
+
+**Tray icon**
+- A small always-present tray icon (started automatically at login,
+  minimized — no window pops up) with a quick menu: open the main window,
+  jump straight to any performance mode with a radio-button indicator
+  showing the current one, or quit
+- Closing the main window hides it to the tray instead of quitting; use
+  the tray menu's Quit to actually exit
 
 **All**
 - No root prompts during normal use: a one-time setup grants your user
@@ -110,10 +117,17 @@ running a recent Ubuntu, you probably will too.
 ## Requirements
 
 Everything needed (Python 3, PyGObject, GTK4, libadwaita) ships with a
-standard GNOME desktop, with one exception: `python3-gi-cairo`, which
-provides the PyGObject/Cairo bridge used to draw the color swatches. It's
-a small official-repo package; `install.sh` installs it automatically if
-missing (`sudo apt install python3-gi-cairo` to do it manually).
+standard GNOME desktop, with two exceptions, both small official-repo
+packages that `install.sh` installs automatically if missing:
+
+- `python3-gi-cairo`, the PyGObject/Cairo bridge used to draw the color
+  swatches
+- `gir1.2-gtk-3.0` and `gir1.2-ayatanaappindicator3-0.1`, used only by the
+  separate tray icon helper process (see "Tray icon architecture" below
+  for why it's a separate GTK3 process rather than part of the main GTK4
+  app). Optional in the sense that the app runs fine without them — you
+  just won't get a tray icon, and closing the window will quit the app
+  instead of hiding it, since there'd be no way to get it back otherwise.
 
 Desktop compatibility: this is a plain GTK4/libadwaita app, so it also runs
 under KDE Plasma and COSMIC (it will just carry libadwaita's GNOME-style
@@ -146,11 +160,11 @@ Either path:
 - Installs a udev rule so the relevant sysfs files (LED color/brightness,
   and battery charge thresholds/performance mode if present) are
   group-writable on every boot
-- Installs and enables four systemd services that save the keyboard
-  color/brightness and performance mode on shutdown and restore them on
-  boot
-- Installs a desktop launcher (and, for the `.deb`, an icon), plus the
-  `clevo-control-panel-cli` command
+- Installs and enables two systemd services that save the keyboard
+  color/brightness on shutdown and restore them on boot
+- Installs a desktop launcher (and, for the `.deb`, an icon), an autostart
+  entry that launches the app minimized at login (tray icon + performance
+  mode restore, no window), plus the `clevo-control-panel-cli` command
 
 The app also has a "Repair Setup" button (gear icon → Settings) that re-runs
 this via `pkexec` — useful if a second user account on the same machine needs
@@ -190,24 +204,50 @@ controller/firmware itself (the same mechanism Windows' Control Center
 software uses), so they already survive a reboot without any systemd
 service — the sysfs files just reflect whatever's currently stored there.
 
-Performance mode is different again: there's no known way to read the
-live value back from real hardware, only what the driver last set (cached
-in kernel memory, which the `performance_mode` sysfs file reports). That's
-still enough for the same save/restore pattern as keyboard color to work:
-`save-performance-mode.service` reads that cached value and writes it to
-`/var/lib/clevo-control-panel/performance-mode.state` before shutdown;
-`restore-performance-mode.service` reads it back and reapplies it at
-boot. If the driver module itself is ever reloaded independently of a
-reboot (e.g. a DKMS rebuild), the cache resets to Balanced until the next
-save/restore cycle.
+Performance mode is different again, and deliberately does **not** use an
+early-boot systemd service the way keyboard color does. An earlier version
+did exactly that, and while investigating an unrelated issue with it, the
+laptop's fans spiked to full speed and it powered off abruptly a few
+seconds into boot — details in
+`~/laptopissues/performance-mode/NOTES.md`. The evidence pointed at
+applying this specific, reverse-engineered EC command that early (while
+ACPI/EC subsystems are still initializing) as the likely cause, something
+never actually tested before shipping it that way. The fix: persistence
+now happens entirely in the app layer, at a point that's always
+fully-booted and interactive, exactly like every real test of this
+feature. `performance.py`'s `set_mode()` writes the new mode to
+`/var/lib/clevo-control-panel/performance-mode.state` the moment it's
+set (no shutdown-time hook needed — the read is a plain cached-value
+read with no EC interaction); the app's own startup restores it, once,
+the first time the app runs after login (via the autostart entry below).
+
+## Tray icon architecture
+
+The tray icon runs as a **separate process** from the main GTK4/libadwaita
+app, using the classic GTK3-based `AyatanaAppIndicator3` — not a toolkit
+choice made lightly. The newer, GTK4-safe `AyatanaAppIndicatorGlib`
+library was tried first, but its `set_menu()` doesn't actually implement
+the `com.canonical.dbusmenu` D-Bus interface GNOME's `ubuntu-appindicators`
+shell extension needs to show a working menu (confirmed by testing, not
+documentation — it's a young library, first packaged for Debian in March
+2025). GTK3 and GTK4 can't be loaded in the same process, so the tray
+lives in its own small process (`clevo_control_panel/tray_helper.py`),
+talking to the main app over D-Bus for Open/Quit (using `Gio.Application`'s
+own built-in remote-activation and remote-actions support — no custom IPC
+code needed there), while reading/writing performance mode directly
+(`backend.py`/`performance.py` are plain Python with no GTK dependency at
+all, so there's no reason to round-trip through the main process for
+that). The two processes are loosely coupled on purpose: the helper
+watches the main app's D-Bus name and quits shortly after it disappears,
+however that happens.
 
 ## Project layout
 
 ```
-clevo_control_panel/       Python package: backends, UI, CLI, config, setup helper
+clevo_control_panel/       Python package: backends, UI, CLI, tray helper, config, setup helper
 bin/clevo-control-panel       GUI launcher script
 bin/clevo-control-panel-cli    CLI launcher script
-data/                       udev rule, systemd units, install script, desktop file
+data/                       udev rule, systemd units, autostart/desktop entries, install script
 ```
 
 ## License

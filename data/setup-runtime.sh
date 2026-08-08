@@ -62,9 +62,20 @@ fi
 
 mkdir -p "$STATE_DIR"
 
+# Group-writable so the app/CLI can persist performance-mode.state directly
+# as a regular user (unlike keyboard's state.json, which only ever needs
+# writing by save-keyboard-color.service running as root -- performance
+# mode is saved at the moment it's changed, from an ordinary user session,
+# see clevo_control_panel/performance.py for why).
+chgrp "$GROUP" "$STATE_DIR" 2>/dev/null || true
+chmod 0775 "$STATE_DIR" 2>/dev/null || true
+if [ -e "$STATE_DIR/performance-mode.state" ]; then
+  chgrp "$GROUP" "$STATE_DIR/performance-mode.state" 2>/dev/null || true
+  chmod 0664 "$STATE_DIR/performance-mode.state" 2>/dev/null || true
+fi
+
 systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
-systemctl enable --now save-performance-mode.service restore-performance-mode.service 2>/dev/null || true
 
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   echo "Clevo Control Panel: $TARGET_USER can now control the keyboard backlight, battery charge thresholds, and performance mode directly."

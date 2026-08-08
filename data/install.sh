@@ -26,18 +26,22 @@ fi
 
 echo "Setting up Clevo Control Panel for user: $TARGET_USER"
 
-# 0. Runtime dependency: PyGObject's cairo integration, needed to draw the
-#    color swatches. Ships as a separate package from python3-gi on Debian/Ubuntu.
-if command -v apt-get >/dev/null 2>&1 && ! dpkg -s python3-gi-cairo >/dev/null 2>&1; then
-  apt-get install -y python3-gi-cairo
+# 0. Runtime dependencies: PyGObject's cairo integration (needed to draw
+#    the color swatches), and GTK3 + the classic AyatanaAppIndicator3 for
+#    the tray icon helper process (see tray_helper.py for why it's GTK3,
+#    not GTK4 like the rest of the app). The app degrades gracefully to no
+#    tray icon if these are missing, but install them by default. Ship as
+#    separate packages from python3-gi on Debian/Ubuntu.
+if command -v apt-get >/dev/null 2>&1; then
+  for pkg in python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1; do
+    dpkg -s "$pkg" >/dev/null 2>&1 || apt-get install -y "$pkg"
+  done
 fi
 
 # 1. Static files a .deb would normally place via its own file list.
 install -m 0644 "$SCRIPT_DIR/99-clevo-control-panel.rules" /etc/udev/rules.d/99-clevo-control-panel.rules
 install -m 0644 "$SCRIPT_DIR/save-keyboard-color.service" /etc/systemd/system/save-keyboard-color.service
 install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system/restore-keyboard-color.service
-install -m 0644 "$SCRIPT_DIR/save-performance-mode.service" /etc/systemd/system/save-performance-mode.service
-install -m 0644 "$SCRIPT_DIR/restore-performance-mode.service" /etc/systemd/system/restore-performance-mode.service
 
 # The systemd units above hardcode /usr/bin/clevo-control-panel-cli (an
 # absolute path, since a .deb install would provide it there). A repo
@@ -56,6 +60,15 @@ install -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" \
   "$SCRIPT_DIR/icons/hicolor/scalable/apps/com.mupdike.ClevoControlPanel.svg" \
   "$ICON_DIR/com.mupdike.ClevoControlPanel.svg"
 sudo -u "$TARGET_USER" gtk-update-icon-cache -q -t -f "$USER_HOME/.local/share/icons/hicolor" 2>/dev/null || true
+
+# System-wide autostart entry (applies to any user's login, not just
+# $TARGET_USER): starts minimized to the tray, restoring the last-set
+# performance mode -- see clevo_control_panel/app.py for why this happens
+# here rather than via an early-boot systemd service.
+mkdir -p /etc/xdg/autostart
+sed "s#__EXEC_PATH__#$SCRIPT_DIR/../bin/clevo-control-panel#" \
+  "$SCRIPT_DIR/clevo-control-panel-autostart.desktop.in" \
+  > /etc/xdg/autostart/clevo-control-panel.desktop
 
 # 2. Runtime activation: group, udev trigger, systemd enable (shared with the
 #    .deb's postinst).

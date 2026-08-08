@@ -9,13 +9,20 @@ already-resolved device directory rather than probing separately.
 
 Unlike charge thresholds, there's no hardware read-back for this feature --
 the driver (and this class) can only report what was last written, not the
-live EC state.
+live EC state. Reboot persistence is therefore handled entirely at this
+layer (see STATE_FILE below), applied once at app startup rather than via
+an early-boot systemd service -- restoring this specific EC command that
+early was found to be unsafe (see
+~/laptopissues/performance-mode/NOTES.md, 2026-08-08 incident writeup).
 """
 
 import os
 from pathlib import Path
 
 MODES = ["balanced", "quiet", "performance", "max-fan"]
+
+STATE_DIR = Path("/var/lib/clevo-control-panel")
+STATE_FILE = STATE_DIR / "performance-mode.state"
 
 
 class PerformanceModeError(RuntimeError):
@@ -50,6 +57,24 @@ class PerformanceMode:
         if mode not in MODES:
             raise ValueError(f"Invalid performance mode: {mode!r}")
         self.mode_file.write_text(mode)
+        try:
+            STATE_FILE.write_text(mode)
+        except OSError:
+            pass  # best-effort persistence; the hardware write already succeeded
+
+    def restore_saved_mode(self):
+        """Apply the last-persisted mode, if any was saved. Meant to be
+        called once, early at app/CLI startup -- not from set_mode() itself,
+        which already persists on every real change."""
+        try:
+            saved = STATE_FILE.read_text().strip()
+        except OSError:
+            return
+        if saved in MODES:
+            try:
+                self.set_mode(saved)
+            except OSError:
+                pass
 
     def is_writable(self):
         return os.access(self.mode_file, os.W_OK)

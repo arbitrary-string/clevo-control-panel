@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Clevo Control Panel
+Comment=Restore saved performance mode and provide tray icon access
+Exec=__EXEC_PATH__ --minimized
+Icon=com.mupdike.ClevoControlPanel
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

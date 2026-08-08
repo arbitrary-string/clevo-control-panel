@@ -1,8 +1,9 @@
 """Command-line control of the keyboard backlight, battery charge
 thresholds, and performance mode, sharing the same backends as the GUI
-app. Also used internally by the boot-persistence systemd units
-(`keyboard`/`performance` `save-state` / `restore-state`) so they don't
-need to know backend details."""
+app. Also used internally by the keyboard boot-persistence systemd units
+(`keyboard save-state` / `keyboard restore-state`) so they don't need to
+know backend details. Performance mode persistence works differently --
+see performance.py -- and has no systemd units of its own."""
 
 import argparse
 import colorsys
@@ -224,31 +225,6 @@ def cmd_performance_set(args):
     _write(performance.set_mode, args.mode)
 
 
-def cmd_performance_save_state(args):
-    try:
-        backend = KeyboardBacklight()
-        performance = PerformanceMode(backend.device_dir)
-    except (BacklightError, PerformanceModeError):
-        return  # nothing to save if there's no supported hardware
-    Path(args.path).write_text(performance.get_mode())
-
-
-def cmd_performance_restore_state(args):
-    path = Path(args.path)
-    if not path.exists():
-        return
-    try:
-        backend = KeyboardBacklight()
-        performance = PerformanceMode(backend.device_dir)
-    except (BacklightError, PerformanceModeError):
-        return
-    mode = path.read_text().strip()
-    try:
-        performance.set_mode(mode)
-    except (OSError, ValueError):
-        pass  # best-effort: e.g. a stale/corrupt state file
-
-
 def main():
     parser = argparse.ArgumentParser(
         description=(
@@ -324,14 +300,6 @@ def main():
     p = psub.add_parser("set", help="set performance mode")
     p.add_argument("mode", choices=PERFORMANCE_MODES)
     p.set_defaults(func=cmd_performance_set)
-
-    p = psub.add_parser("save-state", help=argparse.SUPPRESS)  # used by systemd units
-    p.add_argument("path")
-    p.set_defaults(func=cmd_performance_save_state)
-
-    p = psub.add_parser("restore-state", help=argparse.SUPPRESS)
-    p.add_argument("path")
-    p.set_defaults(func=cmd_performance_restore_state)
 
     args = parser.parse_args()
     args.func(args)

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Clevo Control Panel
-Comment=Control keyboard backlight color and battery charge thresholds
+Comment=Control keyboard backlight color, battery charge thresholds, and performance mode
 Exec=__EXEC_PATH__
 Icon=com.mupdike.ClevoControlPanel
 Terminal=false

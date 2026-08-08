@@ -21,6 +21,7 @@ mkdir -p "$PKG_ROOT"/usr/share/icons/hicolor/scalable/apps
 mkdir -p "$PKG_ROOT"/usr/share/doc/clevo-control-panel
 mkdir -p "$PKG_ROOT"/usr/lib/systemd/system
 mkdir -p "$PKG_ROOT"/etc/udev/rules.d
+mkdir -p "$PKG_ROOT"/etc/xdg/autostart
 
 # Python package.
 cp -r "$REPO_ROOT/clevo_control_panel" "$PKG_ROOT/usr/lib/clevo-control-panel/clevo_control_panel"
@@ -58,23 +59,24 @@ if __name__ == "__main__":
 LAUNCHER
 chmod 0755 "$PKG_ROOT/usr/bin/clevo-control-panel-cli"
 
-# Desktop entry + icon.
+# Desktop entry + autostart entry + icon.
 sed 's#__EXEC_PATH__#/usr/bin/clevo-control-panel#' "$REPO_ROOT/data/clevo-control-panel.desktop.in" \
   > "$PKG_ROOT/usr/share/applications/clevo-control-panel.desktop"
+sed 's#__EXEC_PATH__#/usr/bin/clevo-control-panel#' \
+  "$REPO_ROOT/data/clevo-control-panel-autostart.desktop.in" \
+  > "$PKG_ROOT/etc/xdg/autostart/clevo-control-panel.desktop"
 install -m 0644 \
   "$REPO_ROOT/data/icons/hicolor/scalable/apps/com.mupdike.ClevoControlPanel.svg" \
   "$PKG_ROOT/usr/share/icons/hicolor/scalable/apps/com.mupdike.ClevoControlPanel.svg"
 
 # Systemd units + udev rule (installed under package-managed paths, not
 # /etc/systemd/system, which is reserved for local admin-created units).
+# Only keyboard color/brightness persist this way -- performance mode
+# persistence is handled by the app itself, see clevo_control_panel/app.py.
 install -m 0644 "$REPO_ROOT/data/save-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/save-keyboard-color.service"
 install -m 0644 "$REPO_ROOT/data/restore-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/restore-keyboard-color.service"
-install -m 0644 "$REPO_ROOT/data/save-performance-mode.service" \
-  "$PKG_ROOT/usr/lib/systemd/system/save-performance-mode.service"
-install -m 0644 "$REPO_ROOT/data/restore-performance-mode.service" \
-  "$PKG_ROOT/usr/lib/systemd/system/restore-performance-mode.service"
 install -m 0644 "$REPO_ROOT/data/99-clevo-control-panel.rules" \
   "$PKG_ROOT/etc/udev/rules.d/99-clevo-control-panel.rules"
 
@@ -110,6 +112,7 @@ Section: utils
 Priority: optional
 Architecture: $ARCH
 Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1, adwaita-icon-theme, udev, systemd
+Recommends: gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1
 Maintainer: Michael Updike <arbitrarystring@gmail.com>
 Description: Control keyboard RGB backlight, battery, and performance mode
  GTK4/libadwaita app and CLI for hardware features on System76 laptops and
@@ -141,7 +144,6 @@ set -e
 case "$1" in
   remove|purge)
     systemctl disable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
-    systemctl disable --now save-performance-mode.service restore-performance-mode.service 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
     ;;
 esac
