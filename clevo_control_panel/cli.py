@@ -13,6 +13,8 @@ from pathlib import Path
 
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
+from .performance import MODES as PERFORMANCE_MODES
+from .performance import PerformanceMode, PerformanceModeError
 
 DEFAULT_CYCLE = ["FFFFFF", "0000FF", "FF0000", "FF00FF", "00FF00", "00FFFF", "FFFF00"]
 
@@ -38,6 +40,14 @@ def _open_battery():
     try:
         return ChargeThresholds(backend.device_dir)
     except ChargeThresholdError as e:
+        die(str(e))
+
+
+def _open_performance():
+    backend = _open_backend()
+    try:
+        return PerformanceMode(backend.device_dir)
+    except PerformanceModeError as e:
         die(str(e))
 
 
@@ -199,11 +209,26 @@ def cmd_battery_set(args):
         _write(battery.set_end, args.end)
 
 
+# ---- performance commands ----
+
+
+def cmd_performance_status(args):
+    performance = _open_performance()
+    print(f"mode: {performance.get_mode()}")
+    print(f"writable: {'yes' if performance.is_writable() else 'no'}")
+
+
+def cmd_performance_set(args):
+    performance = _open_performance()
+    _write(performance.set_mode, args.mode)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Control keyboard RGB backlight (system76_acpi or clevo-acpi) and "
-            "battery charge thresholds (clevo-acpi flexicharger only)."
+            "Control keyboard RGB backlight (system76_acpi or clevo-acpi), "
+            "battery charge thresholds, and performance/fan mode "
+            "(clevo-acpi only)."
         )
     )
     top = parser.add_subparsers(dest="group", required=True)
@@ -261,6 +286,18 @@ def main():
     p.add_argument("--start", type=int, help="resume charging below this percent")
     p.add_argument("--end", type=int, help="stop charging at this percent")
     p.set_defaults(func=cmd_battery_set)
+
+    performance = top.add_parser(
+        "performance", help="performance/fan mode control"
+    )
+    psub = performance.add_subparsers(dest="command", required=True)
+
+    p = psub.add_parser("status", help="show current performance mode")
+    p.set_defaults(func=cmd_performance_status)
+
+    p = psub.add_parser("set", help="set performance mode")
+    p.add_argument("mode", choices=PERFORMANCE_MODES)
+    p.set_defaults(func=cmd_performance_set)
 
     args = parser.parse_args()
     args.func(args)

@@ -48,9 +48,10 @@ if [ -e "$CLEVO_LED_DIR/brightness" ]; then
       chmod 0664 "$zf" 2>/dev/null || true
     fi
   done
-  # Battery charge thresholds, if this clevo-acpi build has flexicharger
-  # support. Same platform device as the color_<zone> files above.
-  for attr in charge_control_start_threshold charge_control_end_threshold; do
+  # Battery charge thresholds and performance mode, if this clevo-acpi
+  # build has them. Same platform device as the color_<zone> files above.
+  for attr in charge_control_start_threshold charge_control_end_threshold \
+      performance_mode; do
     af="$CLEVO_LED_DIR/device/$attr"
     if [ -e "$af" ]; then
       chgrp "$GROUP" "$af" 2>/dev/null || true
@@ -65,6 +66,6 @@ systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
 
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
-  echo "Clevo Control Panel: $TARGET_USER can now control the keyboard backlight and battery charge thresholds directly."
+  echo "Clevo Control Panel: $TARGET_USER can now control the keyboard backlight, battery charge thresholds, and performance mode directly."
   echo "If this is the first time, log out and back in (or reboot) for group membership to apply."
 fi

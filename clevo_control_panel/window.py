@@ -16,6 +16,7 @@ from . import config
 from . import setup_helper
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
+from .performance import PerformanceMode, PerformanceModeError
 
 
 class ClevoControlPanelWindow(Adw.ApplicationWindow):
@@ -40,6 +41,15 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             self.battery = None
             self._battery_error = str(e)
 
+        try:
+            self.performance = PerformanceMode(
+                self.backend.device_dir if self.backend else None
+            )
+            self._performance_error = None
+        except PerformanceModeError as e:
+            self.performance = None
+            self._performance_error = str(e)
+
         self._brightness_debounce_id = None
         self._threshold_debounce_id = None
         self._current_hex = "000000"
@@ -48,6 +58,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self._refresh_status()
         self._refresh_system_status()
         self._refresh_battery_status()
+        self._refresh_performance_status()
 
     # ---- Top-level UI construction ----
 
@@ -56,6 +67,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         # fires _on_sidebar_row_selected() immediately, which needs these.
         self.keyboard_page = self._build_keyboard_page()
         self.battery_page = self._build_battery_page()
+        self.performance_page = self._build_performance_page()
 
         self.split_view = Adw.NavigationSplitView()
         self.split_view.set_min_sidebar_width(180)
@@ -77,6 +89,11 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         listbox.add_css_class("navigation-sidebar")
         listbox.append(self._make_sidebar_row("input-keyboard-symbolic", "Keyboard"))
         listbox.append(self._make_sidebar_row("battery-good-symbolic", "Battery"))
+        listbox.append(
+            self._make_sidebar_row(
+                "power-profile-performance-symbolic", "Performance"
+            )
+        )
         listbox.connect("row-selected", self._on_sidebar_row_selected)
         listbox.select_row(listbox.get_row_at_index(0))
 
@@ -103,8 +120,12 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
     def _on_sidebar_row_selected(self, _listbox, row):
         if row is None:
             return
-        page = self.keyboard_page if row.page_name == "keyboard" else self.battery_page
-        self.split_view.set_content(page)
+        pages = {
+            "keyboard": self.keyboard_page,
+            "battery": self.battery_page,
+            "performance": self.performance_page,
+        }
+        self.split_view.set_content(pages[row.page_name])
 
     def _wrap_group(self, title, child_widget):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -415,6 +436,138 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
     def _battery_toast(self, message):
         self.battery_toast_overlay.add_toast(Adw.Toast(title=message, timeout=4))
 
+    # ---- Performance page ----
+
+    def _build_performance_page(self):
+        toolbar_view = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Adw.WindowTitle(title="Performance"))
+
+        settings_btn = Gtk.Button(icon_name="preferences-system-symbolic")
+        settings_btn.set_tooltip_text("System Integration Settings")
+        settings_btn.connect("clicked", self._on_open_settings)
+        header.pack_end(settings_btn)
+        toolbar_view.add_top_bar(header)
+
+        self.performance_banner = Adw.Banner(title="")
+        toolbar_view.add_top_bar(self.performance_banner)
+
+        self.performance_toast_overlay = Adw.ToastOverlay()
+
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        clamp = Adw.Clamp(maximum_size=520)
+        clamp.set_margin_top(12)
+        clamp.set_margin_bottom(24)
+        clamp.set_margin_start(12)
+        clamp.set_margin_end(12)
+
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        clamp.set_child(main_box)
+        scroller.set_child(clamp)
+        self.performance_toast_overlay.set_child(scroller)
+        toolbar_view.set_content(self.performance_toast_overlay)
+
+        main_box.append(self._build_mode_section())
+
+        page = Adw.NavigationPage(title="Performance")
+        page.set_child(toolbar_view)
+        return page
+
+    def _build_mode_section(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+
+        explainer = Gtk.Label(
+            label=(
+                "Switch fan and thermal behavior. Max Fan pins both fans "
+                "at high speed regardless of temperature, until switched "
+                "away from -- use it only when you specifically want "
+                "maximum cooling, not as a general-purpose profile."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+        explainer.add_css_class("dim-label")
+        box.append(explainer)
+
+        self.mode_buttons = {}
+        self.mode_handler_ids = {}
+        group_leader = None
+        for mode, label in (
+            ("balanced", "Balanced"),
+            ("quiet", "Quiet"),
+            ("performance", "Performance"),
+            ("max-fan", "Max Fan"),
+        ):
+            btn = Gtk.CheckButton(label=label)
+            if group_leader is None:
+                group_leader = btn
+            else:
+                btn.set_group(group_leader)
+            handler_id = btn.connect("toggled", self._on_mode_toggled, mode)
+            self.mode_buttons[mode] = btn
+            self.mode_handler_ids[mode] = handler_id
+            box.append(btn)
+
+        refresh_btn = Gtk.Button(label="Refresh from hardware")
+        refresh_btn.set_halign(Gtk.Align.START)
+        refresh_btn.connect(
+            "clicked", lambda b: self._refresh_performance_status()
+        )
+        box.append(refresh_btn)
+
+        return self._wrap_group("Performance Mode", box)
+
+    def _on_mode_toggled(self, button, mode):
+        if not button.get_active() or not self.performance:
+            return
+        try:
+            self.performance.set_mode(mode)
+        except (OSError, ValueError) as e:
+            self._performance_toast(f"Couldn't set performance mode: {e}")
+
+    def _refresh_performance_status(self):
+        if not self.performance:
+            self.performance_banner.set_title(
+                self._performance_error
+                or "No compatible performance mode control found."
+            )
+            self.performance_banner.set_revealed(True)
+            for btn in self.mode_buttons.values():
+                btn.set_sensitive(False)
+            return
+
+        try:
+            mode = self.performance.get_mode()
+        except OSError as e:
+            self._performance_toast(f"Couldn't read performance mode: {e}")
+            return
+
+        btn = self.mode_buttons.get(mode)
+        if btn and not btn.get_active():
+            handler_id = self.mode_handler_ids[mode]
+            btn.handler_block(handler_id)
+            btn.set_active(True)
+            btn.handler_unblock(handler_id)
+
+        writable = self.performance.is_writable()
+        for b in self.mode_buttons.values():
+            b.set_sensitive(writable)
+        if writable:
+            self.performance_banner.set_revealed(False)
+        else:
+            self.performance_banner.set_title(
+                "No write access to performance mode control yet. Run "
+                "system setup below."
+            )
+            self.performance_banner.set_revealed(True)
+
+    def _performance_toast(self, message):
+        self.performance_toast_overlay.add_toast(
+            Adw.Toast(title=message, timeout=4)
+        )
+
     # ---- Settings dialog ----
 
     def _build_system_section(self):
@@ -579,12 +732,17 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         battery_status = (
             "yes" if self.battery and self.battery.is_writable() else "no"
         )
+        performance_status = (
+            "yes" if self.performance and self.performance.is_writable() else "no"
+        )
         self.system_status_label.set_label(
             "Keyboard hardware access: {}\n"
             "Battery threshold access: {}\n"
+            "Performance mode access: {}\n"
             "Boot persistence service: {}".format(
                 "yes" if writable else "no",
                 battery_status,
+                performance_status,
                 "enabled" if persistence_ok else "not enabled",
             )
         )
@@ -611,6 +769,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
                 self._toast(message)
                 self._refresh_system_status()
                 self._refresh_battery_status()
+                self._refresh_performance_status()
 
             GLib.idle_add(_update)
 

@@ -2,9 +2,9 @@
 
 A small GTK4 / libadwaita app (plus a CLI) for hardware features on System76
 laptops and generic Clevo/Tongfang barebones: RGB keyboard backlight control
-(with settings that survive a reboot), and battery charge threshold control
-on boards whose `clevo-acpi` driver build supports it. Two keyboard hardware
-backends are auto-detected:
+(with settings that survive a reboot), battery charge threshold control, and
+performance/fan mode control, on boards whose `clevo-acpi` driver build
+supports each feature. Two keyboard hardware backends are auto-detected:
 
 - **System76 laptops** — the single-zone `system76_acpi::kbd_backlight` LED
   device (e.g. Darter Pro 7).
@@ -13,10 +13,11 @@ backends are auto-detected:
   range of hardware resold under many brands. Some of these boards need a
   separate driver-enablement package first to get the kernel recognizing
   them at all — this app itself doesn't touch drivers, only whichever LED
-  device is already present. Battery charge threshold control is available
-  only on this backend, and only if the installed `clevo-acpi` build
-  includes `charge_control_start_threshold` / `charge_control_end_threshold`
-  sysfs support.
+  device is already present. Battery charge threshold and performance mode
+  control are available only on this backend, and only if the installed
+  `clevo-acpi` build includes the corresponding sysfs support
+  (`charge_control_start_threshold`/`charge_control_end_threshold`, and
+  `performance_mode`, respectively).
 
 ## Why this exists
 
@@ -42,6 +43,17 @@ a configurable percentage, resume at another) to reduce long-term battery
 wear, with no Linux equivalent. Since the underlying `clevo-acpi` platform
 device was already right there, that driver grew the sysfs attributes for
 it, and this app grew a page to control them.
+
+Performance/fan mode control followed the same pattern again: that Clevo
+barebone's Windows Control Center software also has a Performance/Balanced/
+Quiet mode selector with no Linux equivalent, and no vendor documentation
+for how it works. The mapping this app uses was determined empirically
+(observing real fan RPM response to sustained CPU load for each candidate
+EC command value, with the laptop fully cooled down between isolated
+tests) rather than from any spec — see
+`~/laptopissues/battery-threshold/NOTES.md` in that project's development
+history for the raw data, if you're curious or trying to validate this on
+different hardware.
 
 ## About the development process
 
@@ -76,13 +88,23 @@ running a recent Ubuntu, you probably will too.
   place Windows' Control Center software would write them, so they persist
   across reboots on their own — no separate persistence service needed
 
-**Both**
+**Performance** (clevo-acpi backend only, driver-dependent)
+- Switch between Balanced, Quiet, Performance, and Max Fan modes
+- Max Fan pins both fans at high speed regardless of actual temperature
+  until you switch away from it — it's a manual cooling-boost override, not
+  a normal thermal profile, so it's called out separately in the app
+- Unlike battery thresholds, this doesn't persist across a reboot (there's
+  no known way to read the live hardware state back, so the app can only
+  restore what it remembers, and doesn't try to) — it resets to Balanced
+  each boot
+
+**All**
 - No root prompts during normal use: a one-time setup grants your user
   direct write access via a dedicated group + udev rule
 - `clevo-control-panel-cli` for scripting: keyboard static colors
   (whole-keyboard or a single zone on multi-zone hardware), brightness,
   built-in lighting effects (color cycle, breathe, per-zone rainbow wave),
-  and battery threshold status/set
+  battery threshold status/set, and performance mode status/set
 
 ## Requirements
 
@@ -121,7 +143,8 @@ Either path:
 
 - Creates a `clevoctl` group and adds your user to it
 - Installs a udev rule so the relevant sysfs files (LED color/brightness,
-  and battery charge thresholds if present) are group-writable on every boot
+  and battery charge thresholds/performance mode if present) are
+  group-writable on every boot
 - Installs and enables two systemd services that save the keyboard
   color/brightness on shutdown and restore them on boot
 - Installs a desktop launcher (and, for the `.deb`, an icon), plus the
@@ -142,6 +165,8 @@ access, or if something's gotten out of sync.
 ./bin/clevo-control-panel-cli keyboard effect breathe --color 00ffff
 ./bin/clevo-control-panel-cli battery status
 ./bin/clevo-control-panel-cli battery set --start 70 --end 80
+./bin/clevo-control-panel-cli performance status
+./bin/clevo-control-panel-cli performance set quiet
 ```
 
 or launch "Clevo Control Panel" from your app grid after setup.
@@ -162,6 +187,12 @@ Battery charge thresholds work differently: they're stored by the embedded
 controller/firmware itself (the same mechanism Windows' Control Center
 software uses), so they already survive a reboot without any systemd
 service — the sysfs files just reflect whatever's currently stored there.
+
+Performance mode is different again: there's no known way to read the
+live value back from hardware, so the driver only remembers what it last
+set in memory. That means it can't be restored on boot the way keyboard
+color/brightness are, and it resets to Balanced (the EC's own apparent
+power-on default) every time.
 
 ## Project layout
 
