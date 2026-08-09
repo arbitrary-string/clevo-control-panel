@@ -26,14 +26,19 @@ fi
 
 echo "Setting up Clevo Control Panel for user: $TARGET_USER"
 
-# 0. Runtime dependencies: PyGObject's cairo integration (needed to draw
-#    the color swatches), and GTK3 + the classic AyatanaAppIndicator3 for
-#    the tray icon helper process (see tray_helper.py for why it's GTK3,
-#    not GTK4 like the rest of the app). The app degrades gracefully to no
-#    tray icon if these are missing, but install them by default. Ship as
-#    separate packages from python3-gi on Debian/Ubuntu.
+# 0. Runtime dependencies:
+#    - python3-gi-cairo: PyGObject's cairo integration, needed to draw the
+#      color swatches.
+#    - gir1.2-gtk-3.0 / gir1.2-ayatanaappindicator3-0.1: the tray icon
+#      helper process (see tray_helper.py for why it's GTK3, not GTK4 like
+#      the rest of the app). The app degrades gracefully to no tray icon
+#      if these are missing.
+#    - tlp: applies real CPU (and, if present, NVIDIA GPU) power/
+#      performance scaling for the Quiet/Balanced/Performance modes, on
+#      top of the fan behavior those modes already control directly. See
+#      data/apply-power-profile.sh.
 if command -v apt-get >/dev/null 2>&1; then
-  for pkg in python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1; do
+  for pkg in python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 tlp; do
     dpkg -s "$pkg" >/dev/null 2>&1 || apt-get install -y "$pkg"
   done
 fi
@@ -48,6 +53,15 @@ install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system
 # checkout has no such file on PATH otherwise, so symlink it in.
 ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel-cli" /usr/bin/clevo-control-panel-cli
 ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel" /usr/bin/clevo-control-panel
+
+# apply-power-profile.sh needs a stable absolute path too, since it's
+# referenced by exact path in the sudoers rule that grants the clevoctl
+# group passwordless access to it (see the printed instructions at the
+# end of this script -- that file is intentionally NOT installed
+# automatically here).
+mkdir -p /usr/lib/clevo-control-panel
+ln -sf "$SCRIPT_DIR/apply-power-profile.sh" /usr/lib/clevo-control-panel/apply-power-profile.sh
+chmod 0755 "$SCRIPT_DIR/apply-power-profile.sh"
 
 USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 APPS_DIR="$USER_HOME/.local/share/applications"
@@ -81,3 +95,17 @@ if ! id -nG "$TARGET_USER" | grep -qw clevoctl; then
 fi
 echo "If $TARGET_USER was just added to the 'clevoctl' group for the first time,"
 echo "log out and back in (or reboot) for that membership to take effect."
+
+if [ ! -f /etc/sudoers.d/clevo-control-panel ]; then
+  echo
+  echo "One more manual step, deliberately not done automatically: to let"
+  echo "Quiet/Balanced/Performance mode also apply real CPU/GPU power"
+  echo "profile changes (via TLP and, if present, nvidia-smi) without a"
+  echo "password prompt every time, run this yourself (as the target user,"
+  echo "not root -- it calls sudo itself where needed):"
+  echo
+  echo "  bash $SCRIPT_DIR/setup-power-profile-sudoers.sh"
+  echo
+  echo "Without this, those three modes will just control fan behavior,"
+  echo "same as before -- CPU/GPU power scaling is skipped."
+fi

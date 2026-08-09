@@ -1,0 +1,11 @@
+# Lets the clevoctl group apply CPU/GPU power profile settings (TLP +
+# nvidia-smi) without a password prompt, for Clevo Control Panel's
+# performance mode switcher (tray menu, app, and CLI all need this to be
+# instant, not gated on a polkit/password prompt every time).
+#
+# Scoped to three exact invocations only -- no wildcard argument matching
+# -- so this cannot be used to run the script with any other argument,
+# and cannot be used to run any other command as root.
+%clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/apply-power-profile.sh quiet
+%clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/apply-power-profile.sh balanced
+%clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/apply-power-profile.sh performance

@@ -14,15 +14,28 @@ layer (see STATE_FILE below), applied once at app startup rather than via
 an early-boot systemd service -- restoring this specific EC command that
 early was found to be unsafe (see
 ~/laptopissues/performance-mode/NOTES.md, 2026-08-08 incident writeup).
+
+Balanced/Quiet/Performance also apply real CPU (via TLP) and NVIDIA GPU
+(via nvidia-smi) power scaling, on top of the fan behavior these modes
+already control directly -- see data/apply-power-profile.sh. Max Fan
+deliberately doesn't touch CPU/GPU power at all, since it's a manual
+cooling-boost override, not a thermal profile. Applying this needs root
+(writing /etc/tlp.d/, running `tlp start`, `nvidia-smi -pl`), done via a
+narrowly-scoped passwordless sudo rule -- not installed by default, so
+this silently no-ops if it isn't set up (see README.md).
 """
 
 import os
+import subprocess
 from pathlib import Path
 
 MODES = ["balanced", "quiet", "performance", "max-fan"]
 
 STATE_DIR = Path("/var/lib/clevo-control-panel")
 STATE_FILE = STATE_DIR / "performance-mode.state"
+
+POWER_PROFILE_SCRIPT = "/usr/lib/clevo-control-panel/apply-power-profile.sh"
+POWER_PROFILE_MODES = {"quiet", "balanced", "performance"}
 
 
 class PerformanceModeError(RuntimeError):
@@ -61,6 +74,8 @@ class PerformanceMode:
             STATE_FILE.write_text(mode)
         except OSError:
             pass  # best-effort persistence; the hardware write already succeeded
+        if mode in POWER_PROFILE_MODES:
+            _apply_power_profile(mode)
 
     def restore_saved_mode(self):
         """Apply the last-persisted mode, if any was saved. Meant to be
@@ -78,3 +93,18 @@ class PerformanceMode:
 
     def is_writable(self):
         return os.access(self.mode_file, os.W_OK)
+
+
+def _apply_power_profile(mode):
+    # `sudo -n` (non-interactive): if the sudoers rule isn't installed,
+    # this fails immediately instead of hanging on a password prompt
+    # nothing can answer (e.g. from the tray helper, or a GUI action).
+    try:
+        subprocess.run(
+            ["sudo", "-n", POWER_PROFILE_SCRIPT, mode],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass

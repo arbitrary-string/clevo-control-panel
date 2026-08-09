@@ -3,8 +3,9 @@
 A small GTK4 / libadwaita app (plus a CLI) for hardware features on System76
 laptops and generic Clevo/Tongfang barebones: RGB keyboard backlight control
 (with settings that survive a reboot), battery charge threshold control, and
-performance/fan mode control, on boards whose `clevo-acpi` driver build
-supports each feature. Two keyboard hardware backends are auto-detected:
+performance mode control (fan behavior plus, optionally, real CPU/GPU power
+scaling), on boards whose `clevo-acpi` driver build supports each feature.
+Two keyboard hardware backends are auto-detected:
 
 - **System76 laptops** — the single-zone `system76_acpi::kbd_backlight` LED
   device (e.g. Darter Pro 7).
@@ -55,6 +56,15 @@ tests) rather than from any spec — see
 history for the raw data, if you're curious or trying to validate this on
 different hardware.
 
+Measuring that mapping turned up something worth knowing if you have this
+same EC command on your own board: it only ever affects fan curves. RAPL
+power limits, EPP, and measured power draw under load were all identical
+across every mode when tested back-to-back. So Balanced/Quiet/Performance
+also drive real CPU (and, where possible, GPU) power scaling through
+standard tools instead — TLP for the CPU, `nvidia-smi` clock locking for
+the GPU — layered on top of the same fan control. See "CPU/GPU power
+scaling" below.
+
 ## About the development process
 
 This was built with Claude. I'm a coder (nothing too serious or professional)
@@ -91,9 +101,14 @@ running a recent Ubuntu, you probably will too.
 **Performance** (clevo-acpi backend only, driver-dependent)
 - Switch between Balanced, Quiet, Performance, and Max Fan modes, from the
   app window, the tray icon menu, or the CLI
+- Balanced/Quiet/Performance also apply real CPU power scaling (via TLP)
+  and, on laptops with an NVIDIA GPU, GPU clock scaling (via `nvidia-smi`)
+  — not just fan curves. See "CPU/GPU power scaling" below; this part is
+  optional and needs a one-time manual setup step
 - Max Fan pins both fans at high speed regardless of actual temperature
   until you switch away from it — it's a manual cooling-boost override, not
-  a normal thermal profile, so it's called out separately in the app
+  a normal thermal profile, so it's called out separately in the app, and
+  leaves CPU/GPU power settings exactly as they were
 - Reboot persistence: the mode you set is saved the moment you set it, and
   restored once the desktop is fully up at your next login (not via an
   early-boot systemd service — see "How persistence works" below for why)
@@ -128,6 +143,11 @@ packages that `install.sh` installs automatically if missing:
   app). Optional in the sense that the app runs fine without them — you
   just won't get a tray icon, and closing the window will quit the app
   instead of hiding it, since there'd be no way to get it back otherwise.
+
+Also depends on `tlp` (installed automatically by `install.sh`) for real
+CPU power scaling — see "CPU/GPU power scaling" below. `nvidia-smi`, if
+you have an NVIDIA GPU, is used the same way but isn't a hard dependency
+(that part just no-ops without it).
 
 Desktop compatibility: this is a plain GTK4/libadwaita app, so it also runs
 under KDE Plasma and COSMIC (it will just carry libadwaita's GNOME-style
@@ -169,6 +189,10 @@ Either path:
 The app also has a "Repair Setup" button (gear icon → Settings) that re-runs
 this via `pkexec` — useful if a second user account on the same machine needs
 access, or if something's gotten out of sync.
+
+One more optional, manual step: `data/setup-power-profile-sudoers.sh` (see
+"CPU/GPU power scaling" below) — not run automatically by either install
+path, since it touches sudoers.
 
 ## Running
 
@@ -221,6 +245,44 @@ set (no shutdown-time hook needed — the read is a plain cached-value
 read with no EC interaction); the app's own startup restores it, once,
 the first time the app runs after login (via the autostart entry below).
 
+## CPU/GPU power scaling
+
+The reverse-engineered EC command behind Balanced/Quiet/Performance turned
+out to only affect fan curves — confirmed by testing (identical RAPL power
+limits, EPP, and measured power draw across all three modes under the same
+load). So real CPU/GPU scaling is layered on top using standard, well-
+supported tools instead of more EC reverse-engineering:
+
+- **CPU, via [TLP](https://linrunner.de/tlp/)**: each mode writes
+  `/etc/tlp.d/90-clevo-control-panel.conf` (CPU governor, EPP, turbo boost,
+  HWP dynamic boost — the same value for AC and battery, since this is a
+  deliberate choice made through the app, not something that should change
+  just because the power source did) and runs `tlp start` to apply it
+  immediately.
+- **GPU, via `nvidia-smi`, if you have an NVIDIA GPU**: `nvidia-smi -pl`
+  (power limit) is attempted but is a no-op on many laptop/Max-Q GPUs —
+  NVIDIA locks that down at the vBIOS level ("not supported in current
+  scope"), confirmed on the hardware this was built on. `nvidia-smi -lgc`
+  (GPU clock locking) is a different mechanism and isn't restricted the
+  same way — confirmed working, including under real load. Quiet caps the
+  GPU clock low, Balanced caps it moderately, Performance removes the cap
+  entirely.
+- **Intel iGPU**: deliberately not covered. No stable sysfs frequency
+  control was found for the newer `xe` driver (only debugfs, which isn't
+  something to script against).
+
+Both `tlp start` and `nvidia-smi -pl`/`-lgc` need root. Rather than a
+`pkexec` prompt on every single mode switch (which would defeat the point
+of a quick tray-menu switch), a small script
+(`data/apply-power-profile.sh`) does the actual work, and a narrowly-scoped
+sudoers rule lets the `clevoctl` group run it — **only** with the exact
+arguments `quiet`, `balanced`, or `performance`, nothing else, no wildcard
+argument matching. This is a deliberate, security-sensitive file, so it's
+never installed automatically: run `data/setup-power-profile-sudoers.sh`
+yourself when you're ready (it validates with `visudo -c` before touching
+anything real). Without it, these three modes still work exactly as
+before — fan control only, CPU/GPU scaling silently skipped.
+
 ## Tray icon architecture
 
 The tray icon runs as a **separate process** from the main GTK4/libadwaita
@@ -247,7 +309,8 @@ however that happens.
 clevo_control_panel/       Python package: backends, UI, CLI, tray helper, config, setup helper
 bin/clevo-control-panel       GUI launcher script
 bin/clevo-control-panel-cli    CLI launcher script
-data/                       udev rule, systemd units, autostart/desktop entries, install script
+data/                       udev rule, systemd units, autostart/desktop entries, install script,
+                            apply-power-profile.sh + its sudoers setup script
 ```
 
 ## License
