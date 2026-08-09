@@ -16,9 +16,13 @@ from pathlib import Path
 from .auto_profile import AutoProfileConfig, is_on_ac
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
+from .display import DisplayRefreshRate, DisplayRefreshRateError
+from .fan import FanControl, FanControlError
+from .fan_curve import STATUS_FILE, FanCurveConfig, validate_curve
 from .performance import MODES as PERFORMANCE_MODES
 from .performance import POWER_PROFILE_MODES
 from .performance import PerformanceMode, PerformanceModeError
+from .sensors import read_fan_rpms
 
 DEFAULT_CYCLE = ["FFFFFF", "0000FF", "FF0000", "FF00FF", "00FF00", "00FFFF", "FFFF00"]
 
@@ -52,6 +56,14 @@ def _open_performance():
     try:
         return PerformanceMode(backend.device_dir)
     except PerformanceModeError as e:
+        die(str(e))
+
+
+def _open_fan_control():
+    backend = _open_backend()
+    try:
+        return FanControl(backend.device_dir)
+    except FanControlError as e:
         die(str(e))
 
 
@@ -240,8 +252,14 @@ def cmd_performance_auto_status(args):
 
 
 def cmd_performance_auto_set(args):
-    if args.enabled is None and args.ac is None and args.battery is None:
-        die("specify --enabled, --ac, and/or --battery")
+    if (
+        args.enabled is None
+        and args.ac is None
+        and args.battery is None
+        and args.ac_refresh is None
+        and args.battery_refresh is None
+    ):
+        die("specify --enabled, --ac, --battery, --ac-refresh, and/or --battery-refresh")
 
     config = AutoProfileConfig()
     if args.enabled is not None:
@@ -250,6 +268,14 @@ def cmd_performance_auto_set(args):
         config.ac_profile = args.ac
     if args.battery is not None:
         config.battery_profile = args.battery
+    if args.ac_refresh is not None:
+        if not 1 <= args.ac_refresh <= 1000:
+            die("--ac-refresh must be 1-1000")
+        config.ac_refresh_hz = args.ac_refresh
+    if args.battery_refresh is not None:
+        if not 1 <= args.battery_refresh <= 1000:
+            die("--battery-refresh must be 1-1000")
+        config.battery_refresh_hz = args.battery_refresh
     config.save()
 
     if config.enabled:
@@ -257,14 +283,160 @@ def cmd_performance_auto_set(args):
         if on_ac is not None:
             performance = _open_performance()
             _write(performance.set_mode, config.profile_for(on_ac))
+            hz = config.refresh_hz_for(on_ac)
+            if hz is not None:
+                try:
+                    DisplayRefreshRate().set_rate(hz)
+                except DisplayRefreshRateError:
+                    pass  # comfort feature only; never block the rest of the switch
+
+
+# ---- fan commands ----
+
+
+def _fan_daemon_health_hint(config):
+    if not config.enabled:
+        return "not needed (curve disabled)"
+    try:
+        status = json.loads(STATUS_FILE.read_text())
+    except (OSError, ValueError):
+        return "unknown -- no status file yet (daemon may not be running)"
+    age = time.time() - status.get("timestamp", 0)
+    if age > 10:
+        return (
+            f"stale ({age:.0f}s old) -- fan speed could be stuck; check "
+            "'systemctl status clevo-fan-curve.service'"
+        )
+    if status.get("critical_override_active"):
+        return "running, critical temp override active"
+    return "running, curve active"
+
+
+def cmd_fan_status(args):
+    fan_control = _open_fan_control()
+    rpms = read_fan_rpms()
+    for i, fan in enumerate(fan_control.fans()):
+        rpm = f"{rpms[i]} RPM" if i < len(rpms) else "RPM unknown"
+        print(
+            f"fan{fan}: {fan_control.get_duty(fan)}% duty, "
+            f"{fan_control.get_temp(fan)}C, {rpm}"
+        )
+    print(f"manual override active: {'yes' if fan_control.is_manual_active() else 'no'}")
+    config = FanCurveConfig()
+    print(f"curve: {'enabled' if config.enabled else 'disabled'}")
+    print(f"daemon: {_fan_daemon_health_hint(config)}")
+
+
+def cmd_fan_curve_show(args):
+    config = FanCurveConfig()
+    print(f"enabled: {'yes' if config.enabled else 'no'}")
+    print(f"hysteresis: {config.hysteresis_c}C")
+    print(f"critical temp: {config.critical_temp_c}C")
+    print(f"max duty: {config.max_duty_percent}%")
+    print("points (temp_c:percent):")
+    for point in config.curve:
+        print(f"  {point['temp_c']}:{point['percent']}")
+
+
+def cmd_fan_curve_set(args):
+    if (
+        args.point is None
+        and args.hysteresis is None
+        and args.critical_temp is None
+        and args.max_duty is None
+    ):
+        die("specify --point, --hysteresis, --critical-temp, and/or --max-duty")
+
+    config = FanCurveConfig()
+
+    if args.point is not None:
+        points = []
+        for spec in args.point:
+            temp_str, sep, percent_str = spec.partition(":")
+            if not sep:
+                die(f"invalid --point {spec!r}, expected TEMP:PERCENT")
+            try:
+                points.append({"temp_c": int(temp_str), "percent": int(percent_str)})
+            except ValueError:
+                die(f"invalid --point {spec!r}, expected TEMP:PERCENT")
+        try:
+            config.curve = validate_curve(points)
+        except ValueError as e:
+            die(str(e))
+
+    if args.hysteresis is not None:
+        if not 0 <= args.hysteresis <= 20:
+            die("--hysteresis must be 0-20")
+        config.hysteresis_c = args.hysteresis
+
+    if args.critical_temp is not None:
+        if not 60 <= args.critical_temp <= 105:
+            die("--critical-temp must be 60-105")
+        config.critical_temp_c = args.critical_temp
+
+    if args.max_duty is not None:
+        if not 1 <= args.max_duty <= 100:
+            die("--max-duty must be 1-100")
+        config.max_duty_percent = args.max_duty
+
+    if any(p["temp_c"] >= config.critical_temp_c for p in config.curve):
+        die("curve points must all be below the critical temp")
+
+    config.save()
+
+
+def cmd_fan_enable(args):
+    config = FanCurveConfig()
+    config.enabled = True
+    config.save()
+    print("fan curve enabled")
+
+
+def cmd_fan_disable(args):
+    config = FanCurveConfig()
+    config.enabled = False
+    config.save()
+    print("fan curve disabled")
+
+
+def cmd_fan_release(args):
+    fan_control = _open_fan_control()
+    _write(fan_control.release)
+    print("fan control released to firmware auto")
+
+
+def cmd_fan_set(args):
+    fan_control = _open_fan_control()
+    if args.fan == "all":
+        fans = fan_control.fans()
+    else:
+        fan = int(args.fan)
+        if fan not in fan_control.fans():
+            die(f"fan {fan} not present on this board")
+        fans = [fan]
+
+    for fan in fans:
+        _write(fan_control.set_manual_duty, fan, args.duty)
+
+    if args.duration is not None:
+        stop = _install_sigint_stop()
+        deadline = time.monotonic() + args.duration
+        while not stop["flag"]:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(2, remaining))
+            _write(fan_control.ping)
+        _write(fan_control.release)
+        print("fan control released to firmware auto")
 
 
 def main():
     parser = argparse.ArgumentParser(
         description=(
             "Control keyboard RGB backlight (system76_acpi or clevo-acpi), "
-            "battery charge thresholds, and performance/fan mode "
-            "(clevo-acpi only)."
+            "battery charge thresholds, performance/fan mode, and custom "
+            "fan curves (clevo-acpi only)."
         )
     )
     top = parser.add_subparsers(dest="group", required=True)
@@ -353,7 +525,72 @@ def main():
         choices=sorted(POWER_PROFILE_MODES),
         help="profile to use on battery power",
     )
+    p.add_argument(
+        "--ac-refresh",
+        type=int,
+        metavar="HZ",
+        help="display refresh rate to apply on AC power (GNOME/Wayland only); omit to leave unchanged",
+    )
+    p.add_argument(
+        "--battery-refresh",
+        type=int,
+        metavar="HZ",
+        help="display refresh rate to apply on battery power (GNOME/Wayland only); omit to leave unchanged",
+    )
     p.set_defaults(func=cmd_performance_auto_set)
+
+    fan = top.add_parser("fan", help="custom fan curve and manual fan control")
+    fsub = fan.add_subparsers(dest="command", required=True)
+
+    p = fsub.add_parser("status", help="show live fan duty/RPM/temp and curve status")
+    p.set_defaults(func=cmd_fan_status)
+
+    curve = fsub.add_parser("curve", help="view or edit the fan curve")
+    csub = curve.add_subparsers(dest="curve_command", required=True)
+
+    p = csub.add_parser("show", help="show the current fan curve and settings")
+    p.set_defaults(func=cmd_fan_curve_show)
+
+    p = csub.add_parser(
+        "set", help="replace the fan curve points and/or safety settings"
+    )
+    p.add_argument(
+        "--point",
+        action="append",
+        metavar="TEMP:PERCENT",
+        help="a curve point, e.g. --point 65:55; repeat for multiple points. "
+        "Replaces the whole point list when given.",
+    )
+    p.add_argument("--hysteresis", type=int, metavar="N", help="degrees C, 0-20")
+    p.add_argument("--critical-temp", type=int, metavar="N", help="degrees C, 60-105")
+    p.add_argument("--max-duty", type=int, metavar="N", help="percent, 1-100")
+    p.set_defaults(func=cmd_fan_curve_set)
+
+    p = fsub.add_parser("enable", help="enable the fan curve daemon")
+    p.set_defaults(func=cmd_fan_enable)
+
+    p = fsub.add_parser("disable", help="disable the fan curve daemon")
+    p.set_defaults(func=cmd_fan_disable)
+
+    p = fsub.add_parser(
+        "release", help="immediately release fan control back to firmware auto"
+    )
+    p.set_defaults(func=cmd_fan_release)
+
+    p = fsub.add_parser(
+        "set", help="manually command a fan duty (kernel watchdog auto-releases)"
+    )
+    p.add_argument("--fan", choices=["1", "2", "all"], required=True)
+    p.add_argument("--duty", type=int, required=True, metavar="N", help="percent, 0-100")
+    p.add_argument(
+        "--duration",
+        type=float,
+        metavar="SECONDS",
+        help="keep petting the watchdog for this long, then release; if "
+        "omitted, the kernel watchdog releases on its own once this "
+        "process exits and stops petting",
+    )
+    p.set_defaults(func=cmd_fan_set)
 
     args = parser.parse_args()
     args.func(args)

@@ -24,7 +24,9 @@ main app's D-Bus name disappears, however that happens (normal quit,
 crash, kill).
 """
 
+import json
 import sys
+import time
 
 import gi
 
@@ -36,6 +38,8 @@ from gi.repository import Gio, GLib, Gtk
 
 from .auto_profile import AutoProfileConfig
 from .backend import BacklightError, KeyboardBacklight
+from .fan import FanControl, FanControlError
+from .fan_curve import STATUS_FILE, FanCurveConfig
 from .performance import MODES, POWER_PROFILE_MODES, PerformanceMode, PerformanceModeError
 
 APP_ID = "com.mupdike.ClevoControlPanel"
@@ -137,6 +141,71 @@ def _add_mode_items(menu, performance):
     )
 
 
+def _open_fan_control():
+    try:
+        backend = KeyboardBacklight()
+        return FanControl(backend.device_dir)
+    except (BacklightError, FanControlError):
+        return None
+
+
+def _fan_daemon_unhealthy(config):
+    """True only when curve mode is on but the daemon doesn't look alive
+    -- mirrors cli.py's `fan status` health hint, simplified to a bool
+    since the tray only needs to decide whether to show a warning row."""
+    if not config.enabled:
+        return False
+    try:
+        status = json.loads(STATUS_FILE.read_text())
+    except (OSError, ValueError):
+        return True
+    return (time.time() - status.get("timestamp", 0)) > 10
+
+
+def _on_fan_curve_toggled(item):
+    # Writes FanCurveConfig directly, the same direct-hardware pattern
+    # already used above for performance mode -- no daemon restart is
+    # needed, since the daemon itself polls this file for the enabled flag.
+    config = FanCurveConfig()
+    if item.get_active() == config.enabled:
+        return
+    config.enabled = item.get_active()
+    config.save()
+
+
+def _refresh_fan_curve_item(item, warning_item):
+    config = FanCurveConfig()
+    if item.get_active() != config.enabled:
+        item.handler_block_by_func(_on_fan_curve_toggled)
+        item.set_active(config.enabled)
+        item.handler_unblock_by_func(_on_fan_curve_toggled)
+    warning_item.set_visible(_fan_daemon_unhealthy(config))
+    return GLib.SOURCE_CONTINUE
+
+
+def _add_fan_curve_items(menu):
+    config = FanCurveConfig()
+
+    item = Gtk.CheckMenuItem(label="Fan Curve Enabled")
+    item.set_active(config.enabled)
+    item.connect("toggled", _on_fan_curve_toggled)
+    menu.append(item)
+
+    # Non-interactive warning row, shown only when curve mode is on but
+    # the daemon doesn't look healthy -- a Gtk.Menu can't reasonably host
+    # a release button or curve editor, but this at least makes a stuck
+    # daemon visible from the tray, matching the main window's own
+    # daemon-health status row.
+    warning_item = Gtk.MenuItem(label="⚠ Fan curve daemon not responding")
+    warning_item.set_sensitive(False)
+    warning_item.set_visible(_fan_daemon_unhealthy(config))
+    menu.append(warning_item)
+
+    GLib.timeout_add_seconds(
+        MODE_REFRESH_INTERVAL_SECONDS, _refresh_fan_curve_item, item, warning_item
+    )
+
+
 def main():
     main_exec = sys.argv[1] if len(sys.argv) > 1 else "clevo-control-panel"
 
@@ -157,6 +226,11 @@ def main():
     if performance is not None:
         menu.append(Gtk.SeparatorMenuItem())
         _add_mode_items(menu, performance)
+
+    fan_control = _open_fan_control()
+    if fan_control is not None:
+        menu.append(Gtk.SeparatorMenuItem())
+        _add_fan_curve_items(menu)
 
     menu.append(Gtk.SeparatorMenuItem())
 

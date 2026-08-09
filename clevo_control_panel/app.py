@@ -11,6 +11,7 @@ from gi.repository import Adw, Gio, GLib
 
 from .auto_profile import AutoProfileConfig
 from .backend import BacklightError, KeyboardBacklight
+from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .performance import PerformanceMode, PerformanceModeError
 from .power_source import PowerSourceMonitor
 from .window import ClevoControlPanelWindow
@@ -140,3 +141,18 @@ class ClevoControlPanelApp(Adw.Application):
                 performance.set_mode(config.profile_for(on_ac))
             except (OSError, ValueError):
                 pass
+        self._apply_refresh_rate(config, on_ac)
+
+    @staticmethod
+    def _apply_refresh_rate(config, on_ac):
+        hz = config.refresh_hz_for(on_ac)
+        if hz is None:
+            return
+        # A comfort/battery-saving feature, not safety-critical: never
+        # let a display quirk (unsupported rate, no Mutter D-Bus, a
+        # non-GNOME session) block or crash the rest of a profile switch,
+        # the same way _apply_power_profile()'s own failures are swallowed.
+        try:
+            DisplayRefreshRate().set_rate(hz)
+        except DisplayRefreshRateError:
+            pass

@@ -28,12 +28,21 @@ class AutoProfileConfig:
     """enabled/ac_profile/battery_profile, loaded from and saved to
     CONFIG_FILE. Only quiet/balanced/performance are valid choices for
     ac_profile/battery_profile -- Max Fan is a manual cooling override,
-    not a real profile, so it's deliberately not selectable here."""
+    not a real profile, so it's deliberately not selectable here.
+
+    ac_refresh_hz/battery_refresh_hz are optional (default None = "leave
+    refresh rate alone") -- existing configs need no migration, and users
+    who don't care about this never see it do anything. Applied through
+    the same AC/battery transition callback that already applies
+    ac_profile/battery_profile (see app.py's _on_power_source_changed),
+    since it's the same underlying trigger."""
 
     def __init__(self):
         self.enabled = False
         self.ac_profile = DEFAULT_AC_PROFILE
         self.battery_profile = DEFAULT_BATTERY_PROFILE
+        self.ac_refresh_hz = None
+        self.battery_refresh_hz = None
         self.load()
 
     def load(self):
@@ -48,12 +57,16 @@ class AutoProfileConfig:
         battery = data.get("battery_profile")
         if battery in POWER_PROFILE_MODES:
             self.battery_profile = battery
+        self.ac_refresh_hz = _validated_refresh_hz(data.get("ac_refresh_hz"))
+        self.battery_refresh_hz = _validated_refresh_hz(data.get("battery_refresh_hz"))
 
     def save(self):
         data = {
             "enabled": self.enabled,
             "ac_profile": self.ac_profile,
             "battery_profile": self.battery_profile,
+            "ac_refresh_hz": self.ac_refresh_hz,
+            "battery_refresh_hz": self.battery_refresh_hz,
         }
         try:
             CONFIG_FILE.write_text(json.dumps(data))
@@ -62,6 +75,19 @@ class AutoProfileConfig:
 
     def profile_for(self, on_ac):
         return self.ac_profile if on_ac else self.battery_profile
+
+    def refresh_hz_for(self, on_ac):
+        return self.ac_refresh_hz if on_ac else self.battery_refresh_hz
+
+
+def _validated_refresh_hz(value):
+    if value is None:
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    return value if 1 <= value <= 1000 else None
 
 
 def is_on_ac():

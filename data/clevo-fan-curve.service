@@ -1,0 +1,54 @@
+[Unit]
+Description=Clevo Control Panel custom fan curve daemon
+Documentation=https://github.com/arbitrary-string/clevo-control-panel
+ConditionPathExists=/sys/devices/platform/CLV0001:00/fan1_manual_duty
+After=clevo-acpi-reload.service
+Wants=clevo-acpi-reload.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+# Comfortable (3x) margin over the daemon's own configurable poll
+# interval (clamped to a 1-30s range) -- WatchdogSec exists to catch a
+# genuinely hung loop, not to race the configured sleep duration; a
+# false trip at 30s with poll_interval_seconds also set to 30 would
+# defeat the point (confirmed live: WATCHDOG=1 must be sent every
+# iteration regardless of curve-enabled state -- see fan_curve.py).
+WatchdogSec=90
+ExecStart=/usr/bin/clevo-fan-curve-daemon
+Restart=on-failure
+RestartSec=2
+
+DynamicUser=yes
+SupplementaryGroups=clevoctl
+ReadWritePaths=/var/lib/clevo-control-panel
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# read-only, not the stricter full hide: this daemon has no legitimate
+# reason to write anywhere under /home (all its state lives under
+# /var/lib/clevo-control-panel, already covered by ReadWritePaths=
+# below), so read-only preserves the real security property (no writes
+# to user data) without breaking a repo-checkout install, where
+# /usr/bin/clevo-fan-curve-daemon is a symlink into $HOME rather than a
+# real file under /usr -- confirmed live: ProtectHome=yes made systemd
+# unable to even locate the executable to exec ("203/EXEC"), since the
+# symlink target is hidden before the exec ever happens.
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

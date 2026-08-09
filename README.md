@@ -122,6 +122,15 @@ running a recent Ubuntu, you probably will too.
   either way, since it's an override, not one of the two auto-picked
   profiles) — turn auto-switch off to take manual control back. See
   "Automatic profile switching" below
+- Optional display refresh rate switching alongside the same AC/battery
+  trigger — pick a rate for AC, a (typically lower) rate for battery, to
+  save power. Part of the same "Automatic Switching" toggle, not a
+  separate feature. See "Automatic profile switching" below
+- Optional continuous, temperature-driven **custom fan curve**, as an
+  alternative to the four fixed presets — a real background daemon with a
+  kernel-level dead-man's-switch, so a crashed or killed control process
+  can never leave the fan stuck at a stale speed. See "Custom fan curve"
+  below
 
 **Tray icon**
 - A small always-present tray icon (started automatically at login,
@@ -137,8 +146,9 @@ running a recent Ubuntu, you probably will too.
 - `clevo-control-panel-cli` for scripting: keyboard static colors
   (whole-keyboard or a single zone on multi-zone hardware), brightness,
   built-in lighting effects (color cycle, breathe, per-zone rainbow wave),
-  battery threshold status/set, and performance mode status/set, and
-  automatic-switching status/set
+  battery threshold status/set, performance mode status/set,
+  automatic-switching status/set (including refresh rate), and fan curve
+  status/enable/disable/release/manual-set
 
 ## Requirements
 
@@ -220,6 +230,10 @@ path, since it touches sudoers.
 ./bin/clevo-control-panel-cli performance set quiet
 ./bin/clevo-control-panel-cli performance auto status
 ./bin/clevo-control-panel-cli performance auto set --enabled on --ac performance --battery quiet
+./bin/clevo-control-panel-cli performance auto set --ac-refresh 165 --battery-refresh 60
+./bin/clevo-control-panel-cli fan status
+./bin/clevo-control-panel-cli fan curve show
+./bin/clevo-control-panel-cli fan enable
 ```
 
 or launch "Clevo Control Panel" from your app grid after setup.
@@ -351,6 +365,65 @@ insensitive while auto-switch is on, both in the app window and the tray
 menu — otherwise a manual click there would just get silently overridden
 on the next power-source check, which would be confusing. Turn auto-switch
 off to take manual control back.
+
+The same toggle also optionally drives **display refresh rate**: pick a
+rate for AC and a (typically lower) rate for battery, left unset by
+default ("Don't change") so nothing happens unless you opt in. Applied
+through `display.py`'s `DisplayRefreshRate`, which talks to GNOME
+Mutter's own `org.gnome.Mutter.DisplayConfig` D-Bus interface — the same
+one GNOME Settings' Displays panel uses internally, and the Wayland-native
+way to do this (there's no `xrandr` under Wayland). Only works under
+GNOME/Mutter, not other Wayland compositors. A failure here (unsupported
+rate, no Mutter D-Bus, a non-GNOME session) is swallowed silently, the
+same way a CPU/GPU power-profile failure is — this is a comfort/
+battery-saving feature, not something that should ever block or crash a
+profile switch.
+
+## Custom fan curve
+
+An alternative to the four fixed presets: a continuous, temperature-driven
+duty curve you define yourself, built directly on the same `clevo-acpi`
+EC commands `performance_mode` already uses (a second, independently
+discovered command family — see `~/odm-laptop-research/NOTES.md` for how
+it was found and validated). Turn it on in the Performance page, edit the
+temperature/duty points, set a critical-temperature override and a
+maximum-duty comfort ceiling, then Apply.
+
+**Safety design** — this genuinely controls cooling, so it's built with
+several independent layers, not just one:
+
+- A **real background daemon** (`clevo-fan-curve.service`, `Type=notify`,
+  `Restart=on-failure`), not a GUI-process timer — curve-following keeps
+  working even if the window is closed, and systemd restarts it within
+  seconds if it crashes.
+- **Graceful release on any normal exit** (stop, restart, shutdown,
+  exception) — the daemon always hands control back to firmware auto
+  before it goes away.
+- **A hard critical-temperature override**, re-checked every single tick
+  independent of the curve or the max-duty cap — if temperature crosses
+  the line, both fans go to 100%, full stop.
+- **A kernel-level watchdog inside `clevo-acpi.c` itself** — a genuine
+  dead-man's-switch: if nothing renews the manual override within a
+  configurable timeout (default 15s), the *kernel* releases to firmware
+  auto control on its own, with no userspace process involved at all.
+  Confirmed live, including the harshest case: an uncatchably killed
+  (`SIGKILL`) daemon still gets its fan control released automatically,
+  purely by the kernel timing out.
+- A **prominent manual "Release Fan Control to Firmware" button**, always
+  reachable regardless of the toggle state, plus a live daemon-health
+  indicator (service active? status file fresh? critical override
+  engaged?) so a silently stuck daemon is visible, not invisible.
+
+Curve mode and the four discrete presets are mutually exclusive with
+automatic switching (both make continuous, automated claims on the same
+EC state) — turning one on turns the other off, with a toast explaining
+why. All four mode buttons, Max Fan included, become insensitive while a
+curve is active, since Max Fan and a curve would otherwise race for
+control of the literal same fan-duty actuator.
+
+`clevo-control-panel-cli fan status|curve show|curve set|enable|disable|
+release|set` gives the same functionality from the command line — see
+`--help` on each.
 
 ## Tray icon architecture
 

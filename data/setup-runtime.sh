@@ -48,14 +48,31 @@ if [ -e "$CLEVO_LED_DIR/brightness" ]; then
       chmod 0664 "$zf" 2>/dev/null || true
     fi
   done
-  # Battery charge thresholds and performance mode, if this clevo-acpi
-  # build has them. Same platform device as the color_<zone> files above.
+  # Battery charge thresholds, performance mode, and the read-write fan
+  # control attributes, if this clevo-acpi build has them. Same platform
+  # device as the color_<zone> files above. The read-only fan attributes
+  # (fanN_duty/fanN_temp*/fan_manual_active) are deliberately NOT touched
+  # here -- their kernel-assigned mode (0444) already allows any user to
+  # read them, so there's nothing to grant.
   for attr in charge_control_start_threshold charge_control_end_threshold \
-      performance_mode; do
+      performance_mode \
+      fan1_manual_duty fan2_manual_duty fan3_manual_duty \
+      fan_watchdog_timeout_ms; do
     af="$CLEVO_LED_DIR/device/$attr"
     if [ -e "$af" ]; then
       chgrp "$GROUP" "$af" 2>/dev/null || true
       chmod 0664 "$af" 2>/dev/null || true
+    fi
+  done
+
+  # Write-only attributes (kernel-assigned mode 0200, no show() handler
+  # at all) -- add group write without adding a read bit that could
+  # never actually be satisfied.
+  for attr in fan_watchdog_ping fan_release; do
+    af="$CLEVO_LED_DIR/device/$attr"
+    if [ -e "$af" ]; then
+      chgrp "$GROUP" "$af" 2>/dev/null || true
+      chmod 0220 "$af" 2>/dev/null || true
     fi
   done
 fi
@@ -80,6 +97,14 @@ done
 
 systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
+
+# Always enabled: the daemon itself no-ops (a cheap poll of its own tiny
+# config file, no EC access at all) whenever the fan-curve feature is
+# disabled, so there's no cost to leaving it running unconditionally --
+# same reasoning as the two services above. Its unit has its own
+# ConditionPathExists guard for boards without the fan control attributes
+# at all, so this is also safe to run on hardware that predates them.
+systemctl enable --now clevo-fan-curve.service 2>/dev/null || true
 
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   echo "Clevo Control Panel: $TARGET_USER can now control the keyboard backlight, battery charge thresholds, and performance mode directly."

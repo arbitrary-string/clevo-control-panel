@@ -59,6 +59,19 @@ if __name__ == "__main__":
 LAUNCHER
 chmod 0755 "$PKG_ROOT/usr/bin/clevo-control-panel-cli"
 
+cat > "$PKG_ROOT/usr/bin/clevo-fan-curve-daemon" <<'LAUNCHER'
+#!/usr/bin/env python3
+import sys
+
+sys.path.insert(0, "/usr/lib/clevo-control-panel")
+
+from clevo_control_panel.fan_curve import main
+
+if __name__ == "__main__":
+    sys.exit(main())
+LAUNCHER
+chmod 0755 "$PKG_ROOT/usr/bin/clevo-fan-curve-daemon"
+
 # Desktop entry + autostart entry + icon.
 sed 's#__EXEC_PATH__#/usr/bin/clevo-control-panel#' "$REPO_ROOT/data/clevo-control-panel.desktop.in" \
   > "$PKG_ROOT/usr/share/applications/clevo-control-panel.desktop"
@@ -71,12 +84,17 @@ install -m 0644 \
 
 # Systemd units + udev rule (installed under package-managed paths, not
 # /etc/systemd/system, which is reserved for local admin-created units).
-# Only keyboard color/brightness persist this way -- performance mode
-# persistence is handled by the app itself, see clevo_control_panel/app.py.
+# Keyboard color/brightness persist via the two oneshot units below;
+# performance mode persistence is handled by the app itself (see
+# clevo_control_panel/app.py); the fan-curve daemon is the one genuinely
+# long-running service, always enabled but internally a no-op whenever
+# the feature is disabled (see clevo-fan-curve.service).
 install -m 0644 "$REPO_ROOT/data/save-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/save-keyboard-color.service"
 install -m 0644 "$REPO_ROOT/data/restore-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/restore-keyboard-color.service"
+install -m 0644 "$REPO_ROOT/data/clevo-fan-curve.service" \
+  "$PKG_ROOT/usr/lib/systemd/system/clevo-fan-curve.service"
 install -m 0644 "$REPO_ROOT/data/99-clevo-control-panel.rules" \
   "$PKG_ROOT/etc/udev/rules.d/99-clevo-control-panel.rules"
 
@@ -143,7 +161,7 @@ cat > "$PKG_ROOT/DEBIAN/postrm" <<'POSTRM'
 set -e
 case "$1" in
   remove|purge)
-    systemctl disable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
+    systemctl disable --now save-keyboard-color.service restore-keyboard-color.service clevo-fan-curve.service 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
     ;;
 esac

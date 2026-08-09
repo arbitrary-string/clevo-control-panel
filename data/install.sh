@@ -47,12 +47,15 @@ fi
 install -m 0644 "$SCRIPT_DIR/99-clevo-control-panel.rules" /etc/udev/rules.d/99-clevo-control-panel.rules
 install -m 0644 "$SCRIPT_DIR/save-keyboard-color.service" /etc/systemd/system/save-keyboard-color.service
 install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system/restore-keyboard-color.service
+install -m 0644 "$SCRIPT_DIR/clevo-fan-curve.service" /etc/systemd/system/clevo-fan-curve.service
 
-# The systemd units above hardcode /usr/bin/clevo-control-panel-cli (an
-# absolute path, since a .deb install would provide it there). A repo
-# checkout has no such file on PATH otherwise, so symlink it in.
+# The systemd units above hardcode /usr/bin/clevo-control-panel-cli and
+# /usr/bin/clevo-fan-curve-daemon (absolute paths, since a .deb install
+# would provide them there). A repo checkout has no such files on PATH
+# otherwise, so symlink them in.
 ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel-cli" /usr/bin/clevo-control-panel-cli
 ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel" /usr/bin/clevo-control-panel
+ln -sf "$SCRIPT_DIR/../bin/clevo-fan-curve-daemon" /usr/bin/clevo-fan-curve-daemon
 
 # apply-power-profile.sh needs a stable absolute path too, since it's
 # referenced by exact path in the sudoers rule that grants the clevoctl
