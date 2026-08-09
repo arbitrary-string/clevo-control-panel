@@ -115,6 +115,13 @@ running a recent Ubuntu, you probably will too.
 - The app window and tray menu both poll the live mode every 5 seconds, so
   switching from one stays reflected in the other without needing a manual
   refresh
+- Optional automatic switching by power source: turn it on, pick which of
+  Balanced/Quiet/Performance to use on AC and which to use on battery, and
+  the mode follows the AC adapter from then on. Manual mode buttons stay
+  visible but are disabled while this is on (Max Fan stays available
+  either way, since it's an override, not one of the two auto-picked
+  profiles) — turn auto-switch off to take manual control back. See
+  "Automatic profile switching" below
 
 **Tray icon**
 - A small always-present tray icon (started automatically at login,
@@ -130,7 +137,8 @@ running a recent Ubuntu, you probably will too.
 - `clevo-control-panel-cli` for scripting: keyboard static colors
   (whole-keyboard or a single zone on multi-zone hardware), brightness,
   built-in lighting effects (color cycle, breathe, per-zone rainbow wave),
-  battery threshold status/set, and performance mode status/set
+  battery threshold status/set, and performance mode status/set, and
+  automatic-switching status/set
 
 ## Requirements
 
@@ -210,6 +218,8 @@ path, since it touches sudoers.
 ./bin/clevo-control-panel-cli battery set --start 70 --end 80
 ./bin/clevo-control-panel-cli performance status
 ./bin/clevo-control-panel-cli performance set quiet
+./bin/clevo-control-panel-cli performance auto status
+./bin/clevo-control-panel-cli performance auto set --enabled on --ac performance --battery quiet
 ```
 
 or launch "Clevo Control Panel" from your app grid after setup.
@@ -301,6 +311,43 @@ never installed automatically: run `data/setup-power-profile-sudoers.sh`
 yourself when you're ready (it validates with `visudo -c` before touching
 anything real). Without it, these three modes still work exactly as
 before — fan control only, CPU/GPU scaling silently skipped.
+
+## Automatic profile switching
+
+Turn on "Automatic switching" in the Performance page and pick a profile
+for AC power and a (typically lower-power) profile for battery — from then
+on, the mode follows the power source with no manual switching needed.
+Only Balanced/Quiet/Performance are selectable here; Max Fan is a manual
+cooling override, not a real profile, so it's excluded from the picker and
+always stays available to click even while auto-switch owns the other
+three.
+
+The setting lives in `/var/lib/clevo-control-panel/auto-profile.json`
+(system-wide like the other state files, not per-user — the hardware is
+shared by whoever's logged in) and is applied in three places, all
+funneling through the same `performance.py` `set_mode()` a manual click
+would use:
+
+- **At app startup**: if auto-switch is on, the mode is set from the
+  current AC/battery state immediately, rather than restoring whatever was
+  last manually set.
+- **On every change you make in the app** (toggling the switch, changing
+  either dropdown): applied immediately, not left to wait for the next
+  poll.
+- **While the app keeps running**: a 5-second poll (`app.py`, matching the
+  cadence already used for keeping the window/tray mode display in sync)
+  checks `/sys/class/power_supply/*/type == Mains` for a change and
+  switches the moment AC is plugged or unplugged. Polling rather than a
+  udev-triggered event, since the app is already running and a few
+  seconds of latency isn't noticeable for this; on hardware with no
+  distinguishable AC/battery supply (e.g. a desktop), auto-switch has
+  nothing to key off of and the app falls back to manual mode.
+
+The manual mode buttons (Balanced/Quiet/Performance, not Max Fan) become
+insensitive while auto-switch is on, both in the app window and the tray
+menu — otherwise a manual click there would just get silently overridden
+on the next power-source check, which would be confusing. Turn auto-switch
+off to take manual control back.
 
 ## Tray icon architecture
 
