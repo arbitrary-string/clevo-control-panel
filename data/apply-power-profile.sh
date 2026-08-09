@@ -5,9 +5,16 @@
 # permits these three exact invocations, not arbitrary arguments. Not
 # meant to be run directly by users.
 #
-# Intel iGPU (xe driver) frequency control was deliberately left out: no
-# stable sysfs interface for it was found, only debugfs, which is not
-# something to script against. See
+# Intel iGPU (xe driver) frequency control: found under
+# /sys/class/drm/cardN/device/tile0/gt0/freq0/{min,max}_freq -- missed on
+# first investigation because it wasn't reachable via a naive `find`
+# through the card's "device" symlink; it's there via the direct PCI
+# device path. Only gt0 (rcs/ccs/bcs -- render/compute/blitter) is capped;
+# gt1 (vcs/vecs -- video decode/encode) is deliberately left alone, since
+# capping media engines wasn't asked for and could hurt video playback for
+# no real benefit. Confirmed holding under real sustained load (vsync-
+# disabled glxgears): capped at exactly the requested ceiling; uncapped,
+# the same load reached 1500-1700MHz actual against a 2450MHz max. See
 # ~/laptopissues/performance-mode/NOTES.md for the full writeup.
 #
 # NVIDIA GPU power limit (-pl) is attempted but does nothing on this exact
@@ -31,6 +38,7 @@ case "${1:-}" in
     # on this CPU) -- nowhere near quiet. A real ceiling needs an explicit
     # max frequency; confirmed holding under real sustained load.
     MAX_FREQ_KHZ=1500000
+    INTEL_GT0_MAX_FREQ=800
     NVIDIA_WATTS=40
     NVIDIA_GPU_CLOCK_MAX=800
     ;;
@@ -39,6 +47,7 @@ case "${1:-}" in
     BOOST=1
     HWP_BOOST=1
     MAX_FREQ_KHZ=0
+    INTEL_GT0_MAX_FREQ=1500
     NVIDIA_WATTS=100
     NVIDIA_GPU_CLOCK_MAX=1800
     ;;
@@ -47,6 +56,7 @@ case "${1:-}" in
     BOOST=1
     HWP_BOOST=1
     MAX_FREQ_KHZ=0
+    INTEL_GT0_MAX_FREQ=0
     NVIDIA_WATTS=115
     NVIDIA_GPU_CLOCK_MAX=0
     ;;
@@ -90,6 +100,32 @@ for d in /sys/devices/system/cpu/cpu*/cpufreq; do
   fi
   echo "$target" > "$d/scaling_max_freq" 2>/dev/null || true
 done
+
+# Intel iGPU (xe driver) gt0 (render/compute) frequency ceiling. Path
+# resolved dynamically (not hardcoded to this machine's PCI address) by
+# finding whichever /sys/class/drm/cardN/device is driven by "xe".
+INTEL_GT0_FREQ_DIR=""
+for drv_link in /sys/class/drm/card*/device/driver; do
+  [ -e "$drv_link" ] || continue
+  if [ "$(basename "$(readlink -f "$drv_link")")" = "xe" ]; then
+    cand="$(dirname "$drv_link")/tile0/gt0/freq0"
+    if [ -d "$cand" ]; then
+      INTEL_GT0_FREQ_DIR="$cand"
+      break
+    fi
+  fi
+done
+
+if [ -n "$INTEL_GT0_FREQ_DIR" ]; then
+  if [ "$INTEL_GT0_MAX_FREQ" -eq 0 ]; then
+    target="$(cat "$INTEL_GT0_FREQ_DIR/rp0_freq" 2>/dev/null)" || target=""
+  else
+    target="$INTEL_GT0_MAX_FREQ"
+  fi
+  if [ -n "$target" ]; then
+    echo "$target" > "$INTEL_GT0_FREQ_DIR/max_freq" 2>/dev/null || true
+  fi
+fi
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi -pl "$NVIDIA_WATTS" >/dev/null 2>&1 || true
