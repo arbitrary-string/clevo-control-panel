@@ -277,11 +277,20 @@ supported tools instead of more EC reverse-engineering:
   same way — confirmed working, including under real load. Quiet caps the
   GPU clock low, Balanced caps it moderately, Performance removes the cap
   entirely.
-- **Intel iGPU**: deliberately not covered. No stable sysfs frequency
-  control was found for the newer `xe` driver (only debugfs, which isn't
-  something to script against).
+- **Intel iGPU (`xe` driver)**: also capped, via
+  `/sys/class/drm/cardN/device/tile0/gt0/freq0/max_freq` — found on a
+  second, more thorough look; the first search missed it by not
+  traversing through the card's `device` symlink correctly. Only `gt0`
+  (the render/compute/blitter engine, the one that actually reaches
+  2.4GHz) is capped — quiet=800MHz, balanced=1500MHz,
+  performance=uncapped. `gt1` (video decode/encode) is deliberately left
+  alone, since capping media engines wasn't asked for and could hurt
+  video playback for no real benefit. Confirmed holding under real
+  sustained load. Device path resolved dynamically (matches whichever
+  `/sys/class/drm/cardN` is driven by `xe`), not hardcoded to one
+  machine's PCI address.
 
-Both `tlp start` and `nvidia-smi -pl`/`-lgc` need root. Rather than a
+Both `tlp start` and `nvidia-smi -pl`/`-lgc`/Intel `max_freq` need root. Rather than a
 `pkexec` prompt on every single mode switch (which would defeat the point
 of a quick tray-menu switch), a small script
 (`data/apply-power-profile.sh`) does the actual work, and a narrowly-scoped
