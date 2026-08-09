@@ -20,6 +20,8 @@ mkdir -p "$PKG_ROOT"/usr/share/applications
 mkdir -p "$PKG_ROOT"/usr/share/icons/hicolor/scalable/apps
 mkdir -p "$PKG_ROOT"/usr/share/doc/clevo-control-panel
 mkdir -p "$PKG_ROOT"/usr/lib/systemd/system
+mkdir -p "$PKG_ROOT"/usr/lib/systemd/user
+mkdir -p "$PKG_ROOT"/usr/lib/systemd/user-preset
 mkdir -p "$PKG_ROOT"/etc/udev/rules.d
 mkdir -p "$PKG_ROOT"/etc/xdg/autostart
 
@@ -84,17 +86,28 @@ install -m 0644 \
 
 # Systemd units + udev rule (installed under package-managed paths, not
 # /etc/systemd/system, which is reserved for local admin-created units).
-# Keyboard color/brightness persist via the two oneshot units below;
-# performance mode persistence is handled by the app itself (see
-# clevo_control_panel/app.py); the fan-curve daemon is the one genuinely
-# long-running service, always enabled but internally a no-op whenever
-# the feature is disabled (see clevo-fan-curve.service).
+# Keyboard color/brightness persist via the two oneshot *system* units
+# below; performance mode persistence is handled by the app itself (see
+# clevo_control_panel/app.py). The fan-curve daemon is a *user* unit,
+# not a system one -- see the comment at the top of clevo-fan-curve.service
+# for why (never touch this EC interface before an interactive login
+# exists) -- always enabled but internally a no-op whenever the feature
+# is disabled.
 install -m 0644 "$REPO_ROOT/data/save-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/save-keyboard-color.service"
 install -m 0644 "$REPO_ROOT/data/restore-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/restore-keyboard-color.service"
 install -m 0644 "$REPO_ROOT/data/clevo-fan-curve.service" \
-  "$PKG_ROOT/usr/lib/systemd/system/clevo-fan-curve.service"
+  "$PKG_ROOT/usr/lib/systemd/user/clevo-fan-curve.service"
+# Auto-enables the unit above the first time each user's own systemd
+# --user instance ever initializes (e.g. their first login after this
+# package is installed) -- setup-runtime.sh additionally enables it
+# directly for whichever user runs the install/upgrade itself, since a
+# preset alone wouldn't retroactively apply to a user session that
+# already existed before this package was installed.
+cat > "$PKG_ROOT/usr/lib/systemd/user-preset/90-clevo-control-panel.preset" <<'PRESET'
+enable clevo-fan-curve.service
+PRESET
 install -m 0644 "$REPO_ROOT/data/99-clevo-control-panel.rules" \
   "$PKG_ROOT/etc/udev/rules.d/99-clevo-control-panel.rules"
 
@@ -149,6 +162,17 @@ cat > "$PKG_ROOT/DEBIAN/postinst" <<'POSTINST'
 set -e
 case "$1" in
   configure)
+    # One-time migration: clevo-fan-curve.service moved from a system
+    # unit to a --user unit (see the comment at the top of that file for
+    # why -- it must never be able to start before an interactive login
+    # exists). This package no longer ships the old system-scope unit
+    # file at all, but a still-running instance from a previous version
+    # could otherwise linger as an orphan after the upgrade. Safe to run
+    # unconditionally -- a no-op on a fresh install with nothing to stop.
+    systemctl stop clevo-fan-curve.service 2>/dev/null || true
+    systemctl disable clevo-fan-curve.service 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+
     /usr/lib/clevo-control-panel/setup-runtime.sh || true
     ;;
 esac
@@ -161,8 +185,22 @@ cat > "$PKG_ROOT/DEBIAN/postrm" <<'POSTRM'
 set -e
 case "$1" in
   remove|purge)
-    systemctl disable --now save-keyboard-color.service restore-keyboard-color.service clevo-fan-curve.service 2>/dev/null || true
+    systemctl disable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
+
+    # clevo-fan-curve.service is a --user unit (see the comment at the
+    # top of clevo-fan-curve.service for why), so it has to be disabled
+    # via whichever user's session is doing the removal, the same
+    # SUDO_USER/logname heuristic setup-runtime.sh already uses.
+    TARGET_USER="${SUDO_USER:-}"
+    [ -n "$TARGET_USER" ] || TARGET_USER="$(logname 2>/dev/null || true)"
+    if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+      TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || true)"
+      if [ -n "$TARGET_UID" ] && [ -d "/run/user/$TARGET_UID" ]; then
+        sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$TARGET_UID" \
+          systemctl --user disable --now clevo-fan-curve.service 2>/dev/null || true
+      fi
+    fi
     ;;
 esac
 if [ "$1" = "purge" ]; then

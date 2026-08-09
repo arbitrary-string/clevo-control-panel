@@ -1103,10 +1103,12 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self._refresh_performance_status()
 
     @staticmethod
-    def _systemctl_is_active(service_name):
+    def _systemctl_is_active(service_name, user=False):
         try:
+            args = ["systemctl", "--user", "is-active", service_name] if user \
+                else ["systemctl", "is-active", service_name]
             proc = Gio.Subprocess.new(
-                ["systemctl", "is-active", service_name],
+                args,
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
             )
             ok, stdout, _stderr = proc.communicate_utf8(None)
@@ -1149,7 +1151,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             )
             return
 
-        if not self._systemctl_is_active("clevo-fan-curve.service"):
+        if not self._systemctl_is_active("clevo-fan-curve.service", user=True):
             self._last_fan_health = "not_running"
             self.fan_daemon_status_icon.set_from_icon_name("dialog-error-symbolic")
             self.fan_daemon_status_label.set_label(

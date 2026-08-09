@@ -395,7 +395,12 @@ several independent layers, not just one:
 - A **real background daemon** (`clevo-fan-curve.service`, `Type=notify`,
   `Restart=on-failure`), not a GUI-process timer — curve-following keeps
   working even if the window is closed, and systemd restarts it within
-  seconds if it crashes.
+  seconds if it crashes. It's a systemd **--user** unit, not a system
+  one, so it only ever starts once you've actually logged in, never
+  during early boot — the same rule `performance_mode` persistence
+  already follows, after an earlier incident traced a hard power-off to
+  a different reverse-engineered EC command being issued from a system
+  unit at early boot (see `~/laptopissues/performance-mode/NOTES.md`).
 - **Graceful release on any normal exit** (stop, restart, shutdown,
   exception) — the daemon always hands control back to firmware auto
   before it goes away.

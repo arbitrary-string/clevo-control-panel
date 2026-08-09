@@ -23,6 +23,7 @@ if [ -z "$TARGET_USER" ]; then
   echo "Pass the username as an argument: sudo $0 <username>" >&2
   exit 1
 fi
+USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "Setting up Clevo Control Panel for user: $TARGET_USER"
 
@@ -47,7 +48,16 @@ fi
 install -m 0644 "$SCRIPT_DIR/99-clevo-control-panel.rules" /etc/udev/rules.d/99-clevo-control-panel.rules
 install -m 0644 "$SCRIPT_DIR/save-keyboard-color.service" /etc/systemd/system/save-keyboard-color.service
 install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system/restore-keyboard-color.service
-install -m 0644 "$SCRIPT_DIR/clevo-fan-curve.service" /etc/systemd/system/clevo-fan-curve.service
+
+# A systemd --user unit, not a system one -- see the comment at the top
+# of clevo-fan-curve.service for why (never touch this EC interface
+# before an interactive login exists). Installed into $TARGET_USER's own
+# unit directory rather than a system-wide user-unit path, matching this
+# script's existing per-user scope (it already only sets up one user).
+USER_SYSTEMD_DIR="$USER_HOME/.config/systemd/user"
+sudo -u "$TARGET_USER" mkdir -p "$USER_SYSTEMD_DIR"
+install -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" \
+  "$SCRIPT_DIR/clevo-fan-curve.service" "$USER_SYSTEMD_DIR/clevo-fan-curve.service"
 
 # The systemd units above hardcode /usr/bin/clevo-control-panel-cli and
 # /usr/bin/clevo-fan-curve-daemon (absolute paths, since a .deb install
@@ -66,7 +76,6 @@ mkdir -p /usr/lib/clevo-control-panel
 ln -sf "$SCRIPT_DIR/apply-power-profile.sh" /usr/lib/clevo-control-panel/apply-power-profile.sh
 chmod 0755 "$SCRIPT_DIR/apply-power-profile.sh"
 
-USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 APPS_DIR="$USER_HOME/.local/share/applications"
 ICON_DIR="$USER_HOME/.local/share/icons/hicolor/scalable/apps"
 sudo -u "$TARGET_USER" mkdir -p "$APPS_DIR" "$ICON_DIR"

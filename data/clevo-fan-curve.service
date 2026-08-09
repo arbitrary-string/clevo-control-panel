@@ -1,9 +1,23 @@
+# A systemd --user unit (installed under .../systemd/user/, enabled via
+# `systemctl --user`), not a system unit -- deliberately, so this can
+# only ever start once an actual interactive login session exists, never
+# during early boot. A prior, unrelated incident (see
+# ~/laptopissues/performance-mode/NOTES.md, "Incident (2026-08-08):
+# abrupt shutdown") traced a hard power-off to a reverse-engineered EC
+# command being issued from a *system* unit at early boot, in a less-
+# initialized ACPI/EC state than any interactive testing had exercised.
+# Performance-mode persistence was redesigned around the same rule
+# (clevo_control_panel/app.py only ever touches it from an already-
+# running, post-login app process) -- this unit follows the identical
+# boundary. As a bonus, running as the real logged-in user (who setup-
+# runtime.sh already adds to the clevoctl group) needs no DynamicUser/
+# SupplementaryGroups trick at all, and sidesteps the repo-checkout-
+# symlink-into-$HOME permission issue that combination had under
+# DynamicUser's own unrelated ephemeral UID.
 [Unit]
 Description=Clevo Control Panel custom fan curve daemon
 Documentation=https://github.com/arbitrary-string/clevo-control-panel
 ConditionPathExists=/sys/devices/platform/CLV0001:00/fan1_manual_duty
-After=clevo-acpi-reload.service
-Wants=clevo-acpi-reload.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -21,8 +35,6 @@ ExecStart=/usr/bin/clevo-fan-curve-daemon
 Restart=on-failure
 RestartSec=2
 
-DynamicUser=yes
-SupplementaryGroups=clevoctl
 ReadWritePaths=/var/lib/clevo-control-panel
 
 NoNewPrivileges=yes
@@ -51,4 +63,4 @@ MemoryDenyWriteExecute=yes
 SystemCallFilter=@system-service
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

@@ -98,13 +98,28 @@ done
 systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
 
-# Always enabled: the daemon itself no-ops (a cheap poll of its own tiny
-# config file, no EC access at all) whenever the fan-curve feature is
-# disabled, so there's no cost to leaving it running unconditionally --
-# same reasoning as the two services above. Its unit has its own
-# ConditionPathExists guard for boards without the fan control attributes
-# at all, so this is also safe to run on hardware that predates them.
-systemctl enable --now clevo-fan-curve.service 2>/dev/null || true
+# A systemd --user unit, not a system one, enabled for $TARGET_USER
+# specifically -- see the comment at the top of clevo-fan-curve.service
+# for why (never touch this EC interface before an interactive login
+# exists). Always enabled once it can be: the daemon itself no-ops (a
+# cheap poll of its own tiny config file, no EC access at all) whenever
+# the fan-curve feature is disabled, so there's no cost to leaving it
+# running unconditionally -- same reasoning as the two system services
+# above. Its unit has its own ConditionPathExists guard for boards
+# without the fan control attributes at all, so this is also safe to run
+# on hardware that predates them. Requires an active session for
+# $TARGET_USER (a real XDG_RUNTIME_DIR) to reach their systemd --user
+# manager -- silently skipped otherwise (e.g. an unattended install with
+# nobody logged in yet); it'll pick this up the next time they log in
+# via the WantedBy=default.target in the unit's own [Install] section,
+# same as any other --user unit enabled this way.
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+  TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || true)"
+  if [ -n "$TARGET_UID" ] && [ -d "/run/user/$TARGET_UID" ]; then
+    sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$TARGET_UID" \
+      systemctl --user enable --now clevo-fan-curve.service 2>/dev/null || true
+  fi
+fi
 
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   echo "Clevo Control Panel: $TARGET_USER can now control the keyboard backlight, battery charge thresholds, and performance mode directly."

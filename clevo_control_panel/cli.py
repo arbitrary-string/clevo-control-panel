@@ -305,7 +305,7 @@ def _fan_daemon_health_hint(config):
     if age > 10:
         return (
             f"stale ({age:.0f}s old) -- fan speed could be stuck; check "
-            "'systemctl status clevo-fan-curve.service'"
+            "'systemctl --user status clevo-fan-curve.service'"
         )
     if status.get("critical_override_active"):
         return "running, critical temp override active"
