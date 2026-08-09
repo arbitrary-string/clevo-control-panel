@@ -112,6 +112,9 @@ running a recent Ubuntu, you probably will too.
 - Reboot persistence: the mode you set is saved the moment you set it, and
   restored once the desktop is fully up at your next login (not via an
   early-boot systemd service — see "How persistence works" below for why)
+- The app window and tray menu both poll the live mode every 5 seconds, so
+  switching from one stays reflected in the other without needing a manual
+  refresh
 
 **Tray icon**
 - A small always-present tray icon (started automatically at login,
