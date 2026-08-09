@@ -13,9 +13,11 @@ import sys
 import time
 from pathlib import Path
 
+from .auto_profile import AutoProfileConfig, is_on_ac
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
 from .performance import MODES as PERFORMANCE_MODES
+from .performance import POWER_PROFILE_MODES
 from .performance import PerformanceMode, PerformanceModeError
 
 DEFAULT_CYCLE = ["FFFFFF", "0000FF", "FF0000", "FF00FF", "00FF00", "00FFFF", "FFFF00"]
@@ -225,6 +227,38 @@ def cmd_performance_set(args):
     _write(performance.set_mode, args.mode)
 
 
+def cmd_performance_auto_status(args):
+    config = AutoProfileConfig()
+    print(f"enabled: {'yes' if config.enabled else 'no'}")
+    print(f"ac profile: {config.ac_profile}")
+    print(f"battery profile: {config.battery_profile}")
+    on_ac = is_on_ac()
+    if on_ac is None:
+        print("current power source: unknown (no AC/battery distinction found)")
+    else:
+        print(f"current power source: {'AC' if on_ac else 'battery'}")
+
+
+def cmd_performance_auto_set(args):
+    if args.enabled is None and args.ac is None and args.battery is None:
+        die("specify --enabled, --ac, and/or --battery")
+
+    config = AutoProfileConfig()
+    if args.enabled is not None:
+        config.enabled = args.enabled == "on"
+    if args.ac is not None:
+        config.ac_profile = args.ac
+    if args.battery is not None:
+        config.battery_profile = args.battery
+    config.save()
+
+    if config.enabled:
+        on_ac = is_on_ac()
+        if on_ac is not None:
+            performance = _open_performance()
+            _write(performance.set_mode, config.profile_for(on_ac))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=(
@@ -300,6 +334,26 @@ def main():
     p = psub.add_parser("set", help="set performance mode")
     p.add_argument("mode", choices=PERFORMANCE_MODES)
     p.set_defaults(func=cmd_performance_set)
+
+    auto = psub.add_parser(
+        "auto", help="automatic profile switching by power source"
+    )
+    asub = auto.add_subparsers(dest="auto_command", required=True)
+
+    p = asub.add_parser("status", help="show auto-switch configuration")
+    p.set_defaults(func=cmd_performance_auto_status)
+
+    p = asub.add_parser("set", help="configure auto-switch")
+    p.add_argument("--enabled", choices=["on", "off"])
+    p.add_argument(
+        "--ac", choices=sorted(POWER_PROFILE_MODES), help="profile to use on AC power"
+    )
+    p.add_argument(
+        "--battery",
+        choices=sorted(POWER_PROFILE_MODES),
+        help="profile to use on battery power",
+    )
+    p.set_defaults(func=cmd_performance_auto_set)
 
     args = parser.parse_args()
     args.func(args)

@@ -62,17 +62,21 @@ fi
 
 mkdir -p "$STATE_DIR"
 
-# Group-writable so the app/CLI can persist performance-mode.state directly
-# as a regular user (unlike keyboard's state.json, which only ever needs
-# writing by save-keyboard-color.service running as root -- performance
-# mode is saved at the moment it's changed, from an ordinary user session,
-# see clevo_control_panel/performance.py for why).
+# Group-writable, with setgid so new files (auto-profile.json,
+# performance-mode.state) created by whichever clevoctl member happens to
+# write them first are automatically group-owned by clevoctl too, not
+# just that one user's own primary group. Unlike keyboard's state.json
+# (only ever written by save-keyboard-color.service running as root),
+# these are written directly from an ordinary user session -- see
+# clevo_control_panel/performance.py and auto_profile.py for why.
 chgrp "$GROUP" "$STATE_DIR" 2>/dev/null || true
-chmod 0775 "$STATE_DIR" 2>/dev/null || true
-if [ -e "$STATE_DIR/performance-mode.state" ]; then
-  chgrp "$GROUP" "$STATE_DIR/performance-mode.state" 2>/dev/null || true
-  chmod 0664 "$STATE_DIR/performance-mode.state" 2>/dev/null || true
-fi
+chmod 2775 "$STATE_DIR" 2>/dev/null || true
+for f in performance-mode.state auto-profile.json; do
+  if [ -e "$STATE_DIR/$f" ]; then
+    chgrp "$GROUP" "$STATE_DIR/$f" 2>/dev/null || true
+    chmod 0664 "$STATE_DIR/$f" 2>/dev/null || true
+  fi
+done
 
 systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true

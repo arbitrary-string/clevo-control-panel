@@ -14,9 +14,16 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 from . import colors as colors_mod
 from . import config
 from . import setup_helper
+from .auto_profile import AutoProfileConfig, is_on_ac
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
 from .performance import PerformanceMode, PerformanceModeError
+
+# Order matters: index N here corresponds to index N in the AC/battery
+# Gtk.DropDown widgets. Max Fan is deliberately excluded -- it's a manual
+# cooling override, not a real profile to auto-switch into.
+AUTO_SWITCH_MODES = ["balanced", "quiet", "performance"]
+AUTO_SWITCH_LABELS = ["Balanced", "Quiet", "Performance"]
 
 
 class ClevoControlPanelWindow(Adw.ApplicationWindow):
@@ -49,6 +56,8 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         except PerformanceModeError as e:
             self.performance = None
             self._performance_error = str(e)
+
+        self._auto_config = AutoProfileConfig()
 
         self._brightness_debounce_id = None
         self._threshold_debounce_id = None
@@ -476,11 +485,112 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self.performance_toast_overlay.set_child(scroller)
         toolbar_view.set_content(self.performance_toast_overlay)
 
+        main_box.append(self._build_auto_switch_section())
         main_box.append(self._build_mode_section())
 
         page = Adw.NavigationPage(title="Performance")
         page.set_child(toolbar_view)
         return page
+
+    def _build_auto_switch_section(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+
+        explainer = Gtk.Label(
+            label=(
+                "Automatically switch profile when the power source "
+                "changes. While this is on, use the choices below instead "
+                "of the manual buttons, which stay in sync but aren't "
+                "clickable."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+        explainer.add_css_class("dim-label")
+        box.append(explainer)
+
+        switch_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        switch_label = Gtk.Label(label="Switch automatically", xalign=0)
+        switch_label.set_hexpand(True)
+        switch_row.append(switch_label)
+        self.auto_switch_toggle = Gtk.Switch()
+        self.auto_switch_toggle.set_valign(Gtk.Align.CENTER)
+        self._auto_switch_toggle_handler_id = self.auto_switch_toggle.connect(
+            "notify::active", self._on_auto_switch_toggled
+        )
+        switch_row.append(self.auto_switch_toggle)
+        box.append(switch_row)
+
+        grid = Gtk.Grid(row_spacing=12, column_spacing=12)
+
+        grid.attach(Gtk.Label(label="On AC power", xalign=0), 0, 0, 1, 1)
+        self.auto_ac_dropdown = Gtk.DropDown.new_from_strings(AUTO_SWITCH_LABELS)
+        self.auto_ac_dropdown.set_hexpand(True)
+        self._auto_ac_handler_id = self.auto_ac_dropdown.connect(
+            "notify::selected", self._on_auto_profiles_changed
+        )
+        grid.attach(self.auto_ac_dropdown, 1, 0, 1, 1)
+
+        grid.attach(Gtk.Label(label="On battery", xalign=0), 0, 1, 1, 1)
+        self.auto_battery_dropdown = Gtk.DropDown.new_from_strings(AUTO_SWITCH_LABELS)
+        self.auto_battery_dropdown.set_hexpand(True)
+        self._auto_battery_handler_id = self.auto_battery_dropdown.connect(
+            "notify::selected", self._on_auto_profiles_changed
+        )
+        grid.attach(self.auto_battery_dropdown, 1, 1, 1, 1)
+
+        box.append(grid)
+
+        self._sync_auto_switch_ui()
+
+        return self._wrap_group("Automatic Switching", box)
+
+    def _sync_auto_switch_ui(self):
+        self._auto_config.load()
+
+        self.auto_switch_toggle.handler_block(self._auto_switch_toggle_handler_id)
+        self.auto_switch_toggle.set_active(self._auto_config.enabled)
+        self.auto_switch_toggle.handler_unblock(self._auto_switch_toggle_handler_id)
+
+        self.auto_ac_dropdown.handler_block(self._auto_ac_handler_id)
+        self.auto_ac_dropdown.set_selected(
+            AUTO_SWITCH_MODES.index(self._auto_config.ac_profile)
+        )
+        self.auto_ac_dropdown.handler_unblock(self._auto_ac_handler_id)
+
+        self.auto_battery_dropdown.handler_block(self._auto_battery_handler_id)
+        self.auto_battery_dropdown.set_selected(
+            AUTO_SWITCH_MODES.index(self._auto_config.battery_profile)
+        )
+        self.auto_battery_dropdown.handler_unblock(self._auto_battery_handler_id)
+
+    def _on_auto_switch_toggled(self, switch, _pspec):
+        self._auto_config.enabled = switch.get_active()
+        self._auto_config.save()
+        if self._auto_config.enabled:
+            self._apply_auto_profile_now()
+        self._refresh_performance_status()
+
+    def _on_auto_profiles_changed(self, _dropdown, _pspec):
+        self._auto_config.ac_profile = AUTO_SWITCH_MODES[
+            self.auto_ac_dropdown.get_selected()
+        ]
+        self._auto_config.battery_profile = AUTO_SWITCH_MODES[
+            self.auto_battery_dropdown.get_selected()
+        ]
+        self._auto_config.save()
+        if self._auto_config.enabled:
+            self._apply_auto_profile_now()
+
+    def _apply_auto_profile_now(self):
+        if not self.performance:
+            return
+        on_ac = is_on_ac()
+        if on_ac is None:
+            return
+        try:
+            self.performance.set_mode(self._auto_config.profile_for(on_ac))
+        except (OSError, ValueError) as e:
+            self._performance_toast(f"Couldn't set performance mode: {e}")
 
     def _build_mode_section(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -535,6 +645,8 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             self._performance_toast(f"Couldn't set performance mode: {e}")
 
     def _refresh_performance_status(self):
+        self._sync_auto_switch_ui()
+
         if not self.performance:
             self.performance_banner.set_title(
                 self._performance_error
@@ -558,17 +670,31 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             btn.set_active(True)
             btn.handler_unblock(handler_id)
 
+        # The three auto-switch-eligible buttons stay informational
+        # (showing the current mode) but aren't clickable while
+        # auto-switch owns the decision -- otherwise a click here would
+        # just get overridden on the next power-source check, which would
+        # be confusing. Max Fan is exempt: it's an independent
+        # cooling-boost toggle, not one of the two profiles auto-switch
+        # picks between, so it stays available either way.
         writable = self.performance.is_writable()
-        for b in self.mode_buttons.values():
-            b.set_sensitive(writable)
-        if writable:
-            self.performance_banner.set_revealed(False)
-        else:
+        for mode, b in self.mode_buttons.items():
+            auto_governed = mode in AUTO_SWITCH_MODES and self._auto_config.enabled
+            b.set_sensitive(writable and not auto_governed)
+        if not writable:
             self.performance_banner.set_title(
                 "No write access to performance mode control yet. Run "
                 "system setup below."
             )
             self.performance_banner.set_revealed(True)
+        elif self._auto_config.enabled:
+            self.performance_banner.set_title(
+                "Automatic switching is on -- turn it off above to set the "
+                "mode manually."
+            )
+            self.performance_banner.set_revealed(True)
+        else:
+            self.performance_banner.set_revealed(False)
 
     def _performance_toast(self, message):
         self.performance_toast_overlay.add_toast(

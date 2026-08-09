@@ -34,8 +34,9 @@ gi.require_version("AyatanaAppIndicator3", "0.1")
 from gi.repository import AyatanaAppIndicator3 as AppIndicator
 from gi.repository import Gio, GLib, Gtk
 
+from .auto_profile import AutoProfileConfig
 from .backend import BacklightError, KeyboardBacklight
-from .performance import MODES, PerformanceMode, PerformanceModeError
+from .performance import MODES, POWER_PROFILE_MODES, PerformanceMode, PerformanceModeError
 
 APP_ID = "com.mupdike.ClevoControlPanel"
 APP_OBJECT_PATH = "/" + APP_ID.replace(".", "/")
@@ -99,6 +100,15 @@ def _refresh_mode_items(items, performance):
     item = items.get(current)
     if item and not item.get_active():
         item.set_active(True)
+
+    # Same rule as the main window: the three auto-switch-eligible items
+    # stay informational but unclickable while auto-switch owns the
+    # decision. Max Fan is exempt -- an independent boost toggle, not one
+    # of the two profiles auto-switch picks between.
+    auto_enabled = AutoProfileConfig().enabled
+    for mode, mode_item in items.items():
+        mode_item.set_sensitive(not (mode in POWER_PROFILE_MODES and auto_enabled))
+
     return GLib.SOURCE_CONTINUE
 
 
