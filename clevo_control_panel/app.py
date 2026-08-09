@@ -9,9 +9,10 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gio, GLib
 
-from .auto_profile import AutoProfileConfig, is_on_ac
+from .auto_profile import AutoProfileConfig
 from .backend import BacklightError, KeyboardBacklight
 from .performance import PerformanceMode, PerformanceModeError
+from .power_source import PowerSourceMonitor
 from .window import ClevoControlPanelWindow
 
 APP_ID = "com.mupdike.ClevoControlPanel"
@@ -21,12 +22,6 @@ APP_ID = "com.mupdike.ClevoControlPanel"
 # this package the same way this process did.
 _PACKAGE_PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# How often to check for an AC/battery transition while auto-switch is
-# enabled. Polling rather than an instant udev-triggered event, since this
-# already-running process needs no extra system-level plumbing -- a few
-# seconds of latency plugging/unplugging isn't noticeable for this.
-AUTO_SWITCH_POLL_SECONDS = 5
-
 
 class ClevoControlPanelApp(Adw.Application):
     def __init__(self, minimized=False, main_exec=None):
@@ -35,7 +30,7 @@ class ClevoControlPanelApp(Adw.Application):
         self._main_exec = main_exec or "clevo-control-panel"
         self._started = False
         self._tray_process = None
-        self._last_on_ac = None
+        self._power_monitor = None
 
         quit_action = Gio.SimpleAction.new("quit", None)
         quit_action.connect("activate", lambda a, p: self.quit())
@@ -50,9 +45,7 @@ class ClevoControlPanelApp(Adw.Application):
             window = ClevoControlPanelWindow(application=self)
             self._spawn_tray_helper(window)
             self._apply_startup_performance_mode()
-            GLib.timeout_add_seconds(
-                AUTO_SWITCH_POLL_SECONDS, self._check_auto_switch
-            )
+            self._power_monitor = PowerSourceMonitor(self._on_power_source_changed)
 
         if self._start_minimized and not self._started:
             self._started = True
@@ -127,31 +120,23 @@ class ClevoControlPanelApp(Adw.Application):
         if performance is None:
             return
 
-        config = AutoProfileConfig()
-        if config.enabled:
-            on_ac = is_on_ac()
-            self._last_on_ac = on_ac
-            if on_ac is not None:
-                try:
-                    performance.set_mode(config.profile_for(on_ac))
-                except (OSError, ValueError):
-                    pass
-                return
+        if AutoProfileConfig().enabled:
+            # PowerSourceMonitor reports the current power source once,
+            # synchronously, as soon as it's constructed right after this
+            # method returns -- that first report is what applies the
+            # right profile, so there's nothing to do here in this case.
+            return
 
-        # Auto-switch off, or no AC/battery distinction on this hardware
-        # (e.g. a desktop): fall back to whatever was last manually set.
+        # Auto-switch off: fall back to whatever was last manually set.
         performance.restore_saved_mode()
 
-    def _check_auto_switch(self):
+    def _on_power_source_changed(self, on_ac):
         config = AutoProfileConfig()
-        if config.enabled:
-            on_ac = is_on_ac()
-            if on_ac is not None and on_ac != self._last_on_ac:
-                self._last_on_ac = on_ac
-                performance = self._open_performance()
-                if performance is not None:
-                    try:
-                        performance.set_mode(config.profile_for(on_ac))
-                    except (OSError, ValueError):
-                        pass
-        return GLib.SOURCE_CONTINUE
+        if not config.enabled or on_ac is None:
+            return
+        performance = self._open_performance()
+        if performance is not None:
+            try:
+                performance.set_mode(config.profile_for(on_ac))
+            except (OSError, ValueError):
+                pass

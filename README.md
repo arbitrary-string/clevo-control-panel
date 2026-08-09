@@ -332,16 +332,19 @@ would use:
   current AC/battery state immediately, rather than restoring whatever was
   last manually set.
 - **On every change you make in the app** (toggling the switch, changing
-  either dropdown): applied immediately, not left to wait for the next
-  poll.
-- **While the app keeps running**: a 5-second poll (`app.py`, matching the
-  cadence already used for keeping the window/tray mode display in sync)
-  checks `/sys/class/power_supply/*/type == Mains` for a change and
-  switches the moment AC is plugged or unplugged. Polling rather than a
-  udev-triggered event, since the app is already running and a few
-  seconds of latency isn't noticeable for this; on hardware with no
-  distinguishable AC/battery supply (e.g. a desktop), auto-switch has
-  nothing to key off of and the app falls back to manual mode.
+  either dropdown): applied immediately, not left to wait for a
+  notification.
+- **While the app keeps running**: `power_source.py` subscribes to
+  [UPower](https://upower.freedesktop.org/)'s `OnBattery` D-Bus property
+  (the same system service GNOME/KDE already run for the battery icon and
+  power settings) and switches the instant AC is plugged or unplugged —
+  no polling, no added dependency, since UPower is already present on any
+  standard desktop. Only falls back to polling
+  `/sys/class/power_supply/*/type == Mains` every 5 seconds if UPower
+  isn't running at all, e.g. a minimal install without a full desktop
+  environment. On hardware with no distinguishable AC/battery supply
+  (e.g. a desktop), auto-switch has nothing to key off of and the app
+  falls back to manual mode.
 
 The manual mode buttons (Balanced/Quiet/Performance, not Max Fan) become
 insensitive while auto-switch is on, both in the app window and the tray
