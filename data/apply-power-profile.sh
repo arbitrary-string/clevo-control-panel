@@ -27,6 +27,10 @@ case "${1:-}" in
     EPP=power
     BOOST=0
     HWP_BOOST=0
+    # Disabling turbo alone only caps the CPU at its *base* clock (3700MHz
+    # on this CPU) -- nowhere near quiet. A real ceiling needs an explicit
+    # max frequency; confirmed holding under real sustained load.
+    MAX_FREQ_KHZ=1500000
     NVIDIA_WATTS=40
     NVIDIA_GPU_CLOCK_MAX=800
     ;;
@@ -34,6 +38,7 @@ case "${1:-}" in
     EPP=balance_performance
     BOOST=1
     HWP_BOOST=1
+    MAX_FREQ_KHZ=0
     NVIDIA_WATTS=100
     NVIDIA_GPU_CLOCK_MAX=1800
     ;;
@@ -41,6 +46,7 @@ case "${1:-}" in
     EPP=performance
     BOOST=1
     HWP_BOOST=1
+    MAX_FREQ_KHZ=0
     NVIDIA_WATTS=115
     NVIDIA_GPU_CLOCK_MAX=0
     ;;
@@ -67,6 +73,23 @@ CPU_HWP_DYN_BOOST_ON_BAT=$HWP_BOOST
 EOF
 
 command -v tlp >/dev/null 2>&1 && tlp start >/dev/null 2>&1 || true
+
+# Hard frequency ceiling, applied directly rather than through TLP's own
+# CPU_SCALING_MAX_FREQ_ON_AC/BAT: confirmed by testing that TLP treats "0"
+# (its documented "no limit" sentinel) as "leave the current value alone,"
+# not "reset to hardware max" -- so switching quiet -> balanced/performance
+# would leave the CPU stuck at quiet's cap otherwise. This is also a
+# hybrid P-core/E-core CPU (confirmed: per-core cpuinfo_max_freq genuinely
+# differs, e.g. 4700000 vs 3700000 vs 3300000 kHz on this hardware), so
+# "uncapped" means each core's own max, not one hardcoded value for all.
+for d in /sys/devices/system/cpu/cpu*/cpufreq; do
+  if [ "$MAX_FREQ_KHZ" -eq 0 ]; then
+    target="$(cat "$d/cpuinfo_max_freq" 2>/dev/null)" || continue
+  else
+    target="$MAX_FREQ_KHZ"
+  fi
+  echo "$target" > "$d/scaling_max_freq" 2>/dev/null || true
+done
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi -pl "$NVIDIA_WATTS" >/dev/null 2>&1 || true
