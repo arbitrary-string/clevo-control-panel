@@ -6,4 +6,4 @@ a tray icon with quick mode select, and optionally real CPU/GPU power
 scaling via TLP/nvidia-smi) on boards with the clevo-acpi driver's
 performance_mode support."""
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"

@@ -261,7 +261,14 @@ supported tools instead of more EC reverse-engineering:
   HWP dynamic boost — the same value for AC and battery, since this is a
   deliberate choice made through the app, not something that should change
   just because the power source did) and runs `tlp start` to apply it
-  immediately.
+  immediately. Quiet also sets a hard `scaling_max_freq` ceiling (1500MHz),
+  applied directly rather than through TLP — disabling turbo alone only
+  limits the CPU to its *base* clock (3700MHz on the hardware this was
+  built on), nowhere near quiet, and TLP's own equivalent setting turned
+  out to leave a previous cap in place rather than reset it when a mode
+  doesn't want one. Confirmed both directions hold correctly, including
+  that a hybrid CPU's cores can have genuinely different max frequencies
+  (uncapping restores each core's own maximum, not one shared value).
 - **GPU, via `nvidia-smi`, if you have an NVIDIA GPU**: `nvidia-smi -pl`
   (power limit) is attempted but is a no-op on many laptop/Max-Q GPUs —
   NVIDIA locks that down at the vBIOS level ("not supported in current
