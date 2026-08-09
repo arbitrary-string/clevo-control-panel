@@ -60,6 +60,13 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self._refresh_battery_status()
         self._refresh_performance_status()
 
+        # Performance mode can change from outside this window (the tray
+        # menu's quick-select, or the CLI), unlike keyboard/battery, which
+        # are normally only ever changed from within this same app -- so
+        # this one needs to actively stay in sync, not just refresh once.
+        # Matches the tray helper's own refresh cadence.
+        GLib.timeout_add_seconds(5, self._periodic_performance_refresh)
+
     # ---- Top-level UI construction ----
 
     def _build_ui(self):
@@ -567,6 +574,10 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self.performance_toast_overlay.add_toast(
             Adw.Toast(title=message, timeout=4)
         )
+
+    def _periodic_performance_refresh(self):
+        self._refresh_performance_status()
+        return GLib.SOURCE_CONTINUE
 
     # ---- Settings dialog ----
 
