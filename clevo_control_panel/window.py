@@ -23,6 +23,7 @@ from . import setup_helper
 from .auto_profile import AutoProfileConfig, is_on_ac
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
+from .charge_override import set_pending_revert_end
 from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .fan import FanControl, FanControlError
 from .fan_curve import FanCurveConfig, validate_curve
@@ -498,12 +499,40 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
 
         box.append(grid)
 
+        charge_full_btn = Gtk.Button(label="Charge to 100% This Time")
+        charge_full_btn.set_halign(Gtk.Align.START)
+        charge_full_btn.add_css_class("suggested-action")
+        charge_full_btn.connect("clicked", self._on_charge_to_full_clicked)
+        box.append(charge_full_btn)
+
         refresh_btn = Gtk.Button(label="Refresh from hardware")
         refresh_btn.set_halign(Gtk.Align.START)
         refresh_btn.connect("clicked", lambda b: self._refresh_battery_status())
         box.append(refresh_btn)
 
         return self._wrap_group("Charge Thresholds", box)
+
+    def _on_charge_to_full_clicked(self, _btn):
+        if not self.battery:
+            return
+        try:
+            current_end = self.battery.get_end()
+        except OSError as e:
+            self._battery_toast(f"Couldn't read current charge threshold: {e}")
+            return
+        if current_end >= 100:
+            self._battery_toast("Already set to charge to 100%.")
+            return
+
+        # Saved before the spin button write below (which also persists
+        # through the normal debounced apply path) -- a second click
+        # before the override reverts just re-reads 100 here and no-ops
+        # above, so the originally-saved value is never clobbered.
+        set_pending_revert_end(current_end)
+        self.end_threshold_spin.set_value(100)
+        self._battery_toast(
+            f"Charging to 100% this time -- reverts to {current_end}% once unplugged."
+        )
 
     def _on_threshold_changed(self, _spin):
         if not self.battery:

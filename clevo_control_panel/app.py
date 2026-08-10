@@ -11,6 +11,8 @@ from gi.repository import Adw, Gio, GLib
 
 from .auto_profile import AutoProfileConfig
 from .backend import BacklightError, KeyboardBacklight
+from .battery import ChargeThresholdError, ChargeThresholds
+from .charge_override import clear_pending_revert, get_pending_revert_end
 from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .performance import PerformanceMode, PerformanceModeError
 from .power_source import PowerSourceMonitor
@@ -32,6 +34,7 @@ class ClevoControlPanelApp(Adw.Application):
         self._started = False
         self._tray_process = None
         self._power_monitor = None
+        self._window = None
 
         quit_action = Gio.SimpleAction.new("quit", None)
         quit_action.connect("activate", lambda a, p: self.quit())
@@ -44,6 +47,7 @@ class ClevoControlPanelApp(Adw.Application):
         window = self.props.active_window
         if not window:
             window = ClevoControlPanelWindow(application=self)
+            self._window = window
             self._spawn_tray_helper(window)
             self._apply_startup_performance_mode()
             self._power_monitor = PowerSourceMonitor(self._on_power_source_changed)
@@ -116,6 +120,14 @@ class ClevoControlPanelApp(Adw.Application):
         except (BacklightError, PerformanceModeError):
             return None
 
+    @staticmethod
+    def _open_battery():
+        try:
+            backend = KeyboardBacklight()
+            return ChargeThresholds(backend.device_dir)
+        except (BacklightError, ChargeThresholdError):
+            return None
+
     def _apply_startup_performance_mode(self):
         performance = self._open_performance()
         if performance is None:
@@ -132,6 +144,15 @@ class ClevoControlPanelApp(Adw.Application):
         performance.restore_saved_mode()
 
     def _on_power_source_changed(self, on_ac):
+        # Independent of auto-switch below (works whether or not that
+        # feature is enabled) -- "charge to 100% this time" reverts the
+        # moment the laptop is next seen running on battery, including a
+        # full shutdown/reboot with AC unplugged in between, since
+        # PowerSourceMonitor reports the *current* power source once
+        # immediately on construction, not just on live changes.
+        if on_ac is False:
+            self._maybe_revert_charge_override()
+
         config = AutoProfileConfig()
         if not config.enabled or on_ac is None:
             return
@@ -142,6 +163,24 @@ class ClevoControlPanelApp(Adw.Application):
             except (OSError, ValueError):
                 pass
         self._apply_refresh_rate(config, on_ac)
+
+    def _maybe_revert_charge_override(self):
+        saved_end = get_pending_revert_end()
+        if saved_end is None:
+            return
+        battery = self._open_battery()
+        if battery is not None:
+            try:
+                battery.set_end(saved_end)
+            except (OSError, ValueError):
+                pass
+        clear_pending_revert()
+        if self._window is not None:
+            # Keep the open Battery page from showing a stale 100% after
+            # a revert it didn't itself trigger -- same re-read-from-
+            # hardware method the page's own "Refresh from hardware"
+            # button already uses.
+            self._window._refresh_battery_status()
 
     @staticmethod
     def _apply_refresh_rate(config, on_ac):

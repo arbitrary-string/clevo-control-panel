@@ -9,4 +9,4 @@ a continuous temperature-driven fan curve with a background daemon and
 kernel-level watchdog, plus automatic display refresh-rate switching by
 power source."""
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
