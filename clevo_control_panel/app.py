@@ -12,7 +12,7 @@ from gi.repository import Adw, Gio, GLib
 from .auto_profile import AutoProfileConfig
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
-from .charge_override import clear_pending_revert, get_pending_revert_end
+from .charge_override import clear_pending_revert, get_pending_revert
 from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .performance import PerformanceMode, PerformanceModeError
 from .power_source import PowerSourceMonitor
@@ -165,12 +165,16 @@ class ClevoControlPanelApp(Adw.Application):
         self._apply_refresh_rate(config, on_ac)
 
     def _maybe_revert_charge_override(self):
-        saved_end = get_pending_revert_end()
-        if saved_end is None:
+        pending = get_pending_revert()
+        if pending is None:
             return
+        saved_start, saved_end = pending
         battery = self._open_battery()
         if battery is not None:
             try:
+                # start before end, matching window.py's own apply order --
+                # avoids a momentary start > end while reverting from (100, 100).
+                battery.set_start(saved_start)
                 battery.set_end(saved_end)
             except (OSError, ValueError):
                 pass

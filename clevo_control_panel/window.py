@@ -23,7 +23,7 @@ from . import setup_helper
 from .auto_profile import AutoProfileConfig, is_on_ac
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
-from .charge_override import set_pending_revert_end
+from .charge_override import get_pending_revert, set_pending_revert
 from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .fan import FanControl, FanControlError
 from .fan_curve import FanCurveConfig, validate_curve
@@ -515,23 +515,44 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
     def _on_charge_to_full_clicked(self, _btn):
         if not self.battery:
             return
+        if get_pending_revert() is not None:
+            self._battery_toast("Already charging to 100% this time.")
+            return
         try:
+            current_start = self.battery.get_start()
             current_end = self.battery.get_end()
         except OSError as e:
-            self._battery_toast(f"Couldn't read current charge threshold: {e}")
-            return
-        if current_end >= 100:
-            self._battery_toast("Already set to charge to 100%.")
+            self._battery_toast(f"Couldn't read current charge thresholds: {e}")
             return
 
-        # Saved before the spin button write below (which also persists
-        # through the normal debounced apply path) -- a second click
-        # before the override reverts just re-reads 100 here and no-ops
-        # above, so the originally-saved value is never clobbered.
-        set_pending_revert_end(current_end)
+        set_pending_revert(current_start, current_end)
+        try:
+            # Overrides *both* thresholds, not just end: this hardware's
+            # threshold is a hysteresis window, not a simple ceiling --
+            # charging only resumes once capacity drops to/below start,
+            # so if the battery is already sitting stopped between the
+            # old start and end (the most likely reason to click this),
+            # raising end alone would silently do nothing.
+            #
+            # Order and the 99-not-100 value both matter, confirmed live:
+            # the EC rejects any write that would leave start >= end (the
+            # previous value is silently kept, not clamped), so end must
+            # be raised first, and start can only ever reach 99, never
+            # 100, once end is 100. Applied directly rather than through
+            # the spin buttons' debounced _apply_thresholds(), which
+            # always writes start before end and would silently reject
+            # the start write here.
+            self.battery.set_end(100)
+            self.battery.set_start(99)
+        except (OSError, ValueError) as e:
+            self._battery_toast(f"Couldn't set charge thresholds: {e}")
+            return
+
         self.end_threshold_spin.set_value(100)
+        self.start_threshold_spin.set_value(99)
         self._battery_toast(
-            f"Charging to 100% this time -- reverts to {current_end}% once unplugged."
+            f"Charging to 100% this time -- reverts to "
+            f"{current_start}/{current_end}% once unplugged."
         )
 
     def _on_threshold_changed(self, _spin):

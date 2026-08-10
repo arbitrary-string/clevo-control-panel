@@ -97,6 +97,12 @@ running a recent Ubuntu, you probably will too.
 - Thresholds are stored on the embedded controller/firmware side, the same
   place Windows' Control Center software would write them, so they persist
   across reboots on their own — no separate persistence service needed
+- "Charge to 100% This Time": a one-shot override for the occasional trip
+  or long day away from AC, without having to remember to raise (and later
+  lower) your normal thresholds by hand. Reverts on its own the next time
+  the laptop is running on battery — including across a full shutdown and
+  reboot with AC unplugged in between. See "Charge to 100% this time"
+  below for exactly how and why
 
 **Performance** (clevo-acpi backend only, driver-dependent)
 - Switch between Balanced, Quiet, Performance, and Max Fan modes, from the
@@ -378,6 +384,35 @@ rate, no Mutter D-Bus, a non-GNOME session) is swallowed silently, the
 same way a CPU/GPU power-profile failure is — this is a comfort/
 battery-saving feature, not something that should ever block or crash a
 profile switch.
+
+## Charge to 100% this time
+
+The Battery page's charge thresholds are a hysteresis window, not a
+simple ceiling: charging only **resumes** once capacity drops to/below
+the *start* percentage, and raising the *end* percentage alone does
+nothing if the battery is currently sitting stopped somewhere between
+the two (a very plausible moment to reach for this button in the first
+place). "Charge to 100% This Time" raises **both** thresholds — end to
+100, start to 99 — so charging resumes immediately regardless of current
+capacity, saves your normal thresholds to a small state file
+(`/var/lib/clevo-control-panel/charge-override.json`), and reverts them
+automatically the next time the laptop is seen running on battery.
+
+That last part works even across a full shutdown: `PowerSourceMonitor`
+checks the *current* power source once immediately whenever it's
+constructed, not just on live changes, so if you shut down while
+charging and unplug at some point before or shortly after your next
+login, the app's autostart entry notices it's on battery and reverts
+right then — even though nothing was running to see the actual unplug
+happen.
+
+Two details worth knowing if you're touching this code: the override
+uses 99, not 100, for the start threshold, and end has to be raised
+*before* start — confirmed live that this EC silently rejects (keeps the
+previous value, doesn't clamp) any write that would leave start >= end,
+so start can never actually reach 100 while end is 100, and raising
+start past its old value requires end to already be higher. Reverting
+goes in the opposite order (start, then end) for the same reason.
 
 ## Custom fan curve
 
