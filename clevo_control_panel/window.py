@@ -176,8 +176,10 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self.split_view = Adw.NavigationSplitView()
         self.split_view.set_min_sidebar_width(180)
         self.split_view.set_max_sidebar_width(220)
+        # Selecting the sidebar's initial row (below) already sets the
+        # right content via _on_sidebar_row_selected -- no need to also
+        # set it here.
         self.split_view.set_sidebar(self._build_sidebar())
-        self.split_view.set_content(self.keyboard_page)
 
         self.set_content(self.split_view)
 
@@ -191,16 +193,16 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
 
         listbox = Gtk.ListBox()
         listbox.add_css_class("navigation-sidebar")
-        listbox.append(self._make_sidebar_row("input-keyboard-symbolic", "Keyboard"))
-        listbox.append(self._make_sidebar_row("battery-good-symbolic", "Battery"))
+        listbox.append(
+            self._make_sidebar_row("utilities-system-monitor-symbolic", "Dashboard")
+        )
         listbox.append(
             self._make_sidebar_row(
                 "power-profile-performance-symbolic", "Performance"
             )
         )
-        listbox.append(
-            self._make_sidebar_row("utilities-system-monitor-symbolic", "Dashboard")
-        )
+        listbox.append(self._make_sidebar_row("battery-good-symbolic", "Battery"))
+        listbox.append(self._make_sidebar_row("input-keyboard-symbolic", "Keyboard"))
         listbox.connect("row-selected", self._on_sidebar_row_selected)
         listbox.select_row(listbox.get_row_at_index(0))
 
