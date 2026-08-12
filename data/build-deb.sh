@@ -34,6 +34,22 @@ find "$PKG_ROOT/usr/lib/clevo-control-panel/clevo_control_panel" -name '__pycach
 install -m 0755 "$REPO_ROOT/data/setup-runtime.sh" \
   "$PKG_ROOT/usr/lib/clevo-control-panel/setup-runtime.sh"
 
+# CPU/GPU power scaling for Quiet/Balanced/Performance (see "CPU/GPU
+# power scaling" in README.md). apply-power-profile.sh is what the
+# sudoers rule below actually grants passwordless root access to, at
+# this exact installed path -- without it, a fresh .deb-only install
+# would have TLP/nvidia-smi calls silently no-op (this was previously
+# missing from this package entirely; the only reason it ever worked on
+# a .deb install was a leftover install.sh dev-mode symlink happening to
+# already be in place). setup-power-profile-sudoers.sh is packaged too,
+# but --- like the sudoers rule it installs --- deliberately never run
+# automatically; see the "One more optional, manual step" note in
+# README.md for why.
+install -m 0755 "$REPO_ROOT/data/apply-power-profile.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/apply-power-profile.sh"
+install -m 0755 "$REPO_ROOT/data/setup-power-profile-sudoers.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/setup-power-profile-sudoers.sh"
+
 # Launchers.
 cat > "$PKG_ROOT/usr/bin/clevo-control-panel" <<'LAUNCHER'
 #!/usr/bin/env python3

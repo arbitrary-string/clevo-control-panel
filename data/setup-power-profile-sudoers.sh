@@ -9,14 +9,18 @@
 # install.sh does automatically: sudoers is sensitive enough to want an
 # explicit, reviewable step. Run this yourself when you're ready:
 #
-#   bash data/setup-power-profile-sudoers.sh
+#   bash data/setup-power-profile-sudoers.sh          (repo checkout)
+#   /usr/lib/clevo-control-panel/setup-power-profile-sudoers.sh  (.deb install)
 #
 # Safe to re-run. Validates with `visudo -c` before touching the real
 # sudoers directory, so a typo here can't break sudo system-wide.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SUDOERS_FILE="$SCRIPT_DIR/clevo-control-panel.sudoers"
+# A temp file, not one written next to this script: when installed by
+# the .deb, this script lives under /usr/lib/clevo-control-panel, owned
+# by root and not writable by the ordinary user who's meant to run this.
+SUDOERS_FILE="$(mktemp)"
+trap 'rm -f "$SUDOERS_FILE"' EXIT
 DEST=/etc/sudoers.d/clevo-control-panel
 
 cat > "$SUDOERS_FILE" <<'EOF'

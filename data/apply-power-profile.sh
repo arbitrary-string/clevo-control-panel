@@ -69,6 +69,15 @@ esac
 # Same value on AC and battery: this profile is a deliberate, explicit
 # choice made through the app, not something that should quietly change
 # just because the power source did.
+#
+# PCIe ASPM is the one exception, left keyed to the real AC/battery
+# state (not the selected profile) since it's orthogonal to how much CPU
+# performance was asked for -- it's a device link power-saving setting,
+# not a performance one. Left at "default" (untouched) on AC since
+# there's no battery to save; "powersupersave" (the most aggressive
+# level) on battery for the NVMe SSD/WiFi card idle power it can save.
+# Confirmed live before adding this: no dmesg errors, network and NVMe
+# access both stayed fully responsive at this setting on this hardware.
 cat > "$CONF" <<EOF
 # Managed by Clevo Control Panel -- overwritten on every performance mode
 # change, don't hand-edit. See ~/laptopissues/performance-mode/NOTES.md.
@@ -80,6 +89,8 @@ CPU_BOOST_ON_AC=$BOOST
 CPU_BOOST_ON_BAT=$BOOST
 CPU_HWP_DYN_BOOST_ON_AC=$HWP_BOOST
 CPU_HWP_DYN_BOOST_ON_BAT=$HWP_BOOST
+PCIE_ASPM_ON_AC=default
+PCIE_ASPM_ON_BAT=powersupersave
 EOF
 
 command -v tlp >/dev/null 2>&1 && tlp start >/dev/null 2>&1 || true

@@ -217,9 +217,11 @@ The app also has a "Repair Setup" button (gear icon → Settings) that re-runs
 this via `pkexec` — useful if a second user account on the same machine needs
 access, or if something's gotten out of sync.
 
-One more optional, manual step: `data/setup-power-profile-sudoers.sh` (see
+One more optional, manual step: `setup-power-profile-sudoers.sh` (see
 "CPU/GPU power scaling" below) — not run automatically by either install
-path, since it touches sudoers.
+path, since it touches sudoers. In a repo checkout that's
+`data/setup-power-profile-sudoers.sh`; for a `.deb` install it's
+`/usr/lib/clevo-control-panel/setup-power-profile-sudoers.sh`.
 
 ## Running
 
@@ -319,16 +321,39 @@ supported tools instead of more EC reverse-engineering:
   sustained load. Device path resolved dynamically (matches whichever
   `/sys/class/drm/cardN` is driven by `xe`), not hardcoded to one
   machine's PCI address.
+- **PCIe ASPM**, also via TLP, keyed to the real AC/battery state rather
+  than the selected mode (unlike everything else above) — it's a device
+  link power-saving setting, not a performance one, so it doesn't need to
+  track how much CPU/GPU performance was asked for. Left at `default`
+  (untouched) on AC; `powersupersave` (the most aggressive level) on
+  battery, for the NVMe SSD/WiFi card idle power it can save. Confirmed
+  live before shipping: no dmesg errors, network and NVMe access both
+  stayed fully responsive at this setting on the hardware this was built
+  on.
+
+**Known gotcha, worth checking if a mode doesn't seem to change anything
+while on AC power**: `/etc/tlp.conf` ships with some settings commented
+out as illustrative defaults, but on at least one system this project was
+built on, `CPU_SCALING_GOVERNOR_ON_AC` and `CPU_ENERGY_PERF_POLICY_ON_AC`
+were already uncommented (both set to `performance`) — since
+`/etc/tlp.conf` is meant to be the *base* config that `/etc/tlp.d/*.conf`
+drop-ins like this app's override, an uncommented value there silently
+wins over whatever this app writes, for the AC state only (confirmed live
+that the battery-state settings were unaffected). If Quiet/Balanced don't
+seem to actually change CPU behavior while plugged in, check
+`/etc/tlp.conf` for uncommented `*_ON_AC` lines under those two settings
+and comment them out.
 
 Both `tlp start` and `nvidia-smi -pl`/`-lgc`/Intel `max_freq` need root. Rather than a
 `pkexec` prompt on every single mode switch (which would defeat the point
-of a quick tray-menu switch), a small script
-(`data/apply-power-profile.sh`) does the actual work, and a narrowly-scoped
-sudoers rule lets the `clevoctl` group run it — **only** with the exact
-arguments `quiet`, `balanced`, or `performance`, nothing else, no wildcard
-argument matching. This is a deliberate, security-sensitive file, so it's
-never installed automatically: run `data/setup-power-profile-sudoers.sh`
-yourself when you're ready (it validates with `visudo -c` before touching
+of a quick tray-menu switch), a small script (`apply-power-profile.sh`,
+installed to `/usr/lib/clevo-control-panel/` by both install paths) does
+the actual work, and a narrowly-scoped sudoers rule lets the `clevoctl`
+group run it — **only** with the exact arguments `quiet`, `balanced`, or
+`performance`, nothing else, no wildcard argument matching. The sudoers
+rule itself is a deliberate, security-sensitive file, so it's never
+installed automatically: run `setup-power-profile-sudoers.sh` yourself
+when you're ready (it validates with `visudo -c` before touching
 anything real). Without it, these three modes still work exactly as
 before — fan control only, CPU/GPU scaling silently skipped.
 
