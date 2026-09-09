@@ -133,6 +133,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         # utilization technique) are too expensive to run when nobody's
         # looking at them.
         self._dashboard_timer_id = None
+        self._current_page_name = None
         self._dashboard_history = {
             "cpu_temp": collections.deque(maxlen=DASHBOARD_HISTORY_LENGTH),
             "gpu_temp": collections.deque(maxlen=DASHBOARD_HISTORY_LENGTH),
@@ -160,9 +161,25 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self.connect("notify::visible", self._on_window_visibility_changed)
 
     def _on_window_visibility_changed(self, _window, _pspec):
-        if not self.get_visible() and self._dashboard_timer_id is not None:
-            GLib.source_remove(self._dashboard_timer_id)
-            self._dashboard_timer_id = None
+        if not self.get_visible():
+            if self._dashboard_timer_id is not None:
+                GLib.source_remove(self._dashboard_timer_id)
+                self._dashboard_timer_id = None
+            return
+
+        # Becoming visible again (e.g. restored from the tray) while
+        # Dashboard is still the selected page: _on_sidebar_row_selected
+        # already declined to start the timer back when the window wasn't
+        # visible yet, so resume it here instead of leaving the page stuck
+        # showing stale data.
+        if (
+            self._current_page_name == "dashboard"
+            and self._dashboard_timer_id is None
+        ):
+            self._refresh_dashboard()
+            self._dashboard_timer_id = GLib.timeout_add(
+                DASHBOARD_REFRESH_MS, self._on_dashboard_timer_tick
+            )
 
     # ---- Top-level UI construction ----
 
@@ -237,17 +254,24 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             "dashboard": self.dashboard_page,
         }
         self.split_view.set_content(pages[row.page_name])
+        self._current_page_name = row.page_name
 
         # The Dashboard's refresh involves genuinely expensive reads
         # (spawning nvidia-smi, scanning /proc for the Xe utilization
         # technique) unlike this app's other cheap periodic checks, so
         # its timer only runs while the page is actually the one shown --
         # started fresh on every navigation to it (never left stacked),
-        # stopped the moment you navigate away.
+        # stopped the moment you navigate away. Also gated on the window
+        # actually being visible: this fires during initial construction
+        # too (selecting the default sidebar row), including when starting
+        # via --minimized, where the window is never presented at all --
+        # _on_window_visibility_changed has no hidden->visible transition
+        # to catch in that case, so starting the timer here regardless of
+        # visibility would leak it running forever in the background.
         if self._dashboard_timer_id is not None:
             GLib.source_remove(self._dashboard_timer_id)
             self._dashboard_timer_id = None
-        if row.page_name == "dashboard":
+        if row.page_name == "dashboard" and self.get_visible():
             self._refresh_dashboard()
             self._dashboard_timer_id = GLib.timeout_add(
                 DASHBOARD_REFRESH_MS, self._on_dashboard_timer_tick
