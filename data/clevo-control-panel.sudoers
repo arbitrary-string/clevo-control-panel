@@ -9,3 +9,10 @@
 %clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/apply-power-profile.sh quiet
 %clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/apply-power-profile.sh balanced
 %clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/apply-power-profile.sh performance
+
+# Same reasoning: lets the clevoctl group switch this board's BIOS-level
+# GPU MUX mode (see switch-gpu-mode.sh's own extensive comment for what
+# this actually does and why it's safe -- a firmware NVRAM write, not a
+# live hardware action). Scoped to exactly these two invocations only.
+%clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/switch-gpu-mode.sh dgpu
+%clevoctl ALL=(root) NOPASSWD: /usr/lib/clevo-control-panel/switch-gpu-mode.sh mshybrid

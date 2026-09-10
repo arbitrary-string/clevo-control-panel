@@ -84,6 +84,11 @@ mkdir -p /usr/lib/clevo-control-panel
 ln -sf "$SCRIPT_DIR/apply-power-profile.sh" /usr/lib/clevo-control-panel/apply-power-profile.sh
 chmod 0755 "$SCRIPT_DIR/apply-power-profile.sh"
 
+# Same reasoning as apply-power-profile.sh above: switch-gpu-mode.sh
+# needs a stable absolute path for its own sudoers rule to reference.
+ln -sf "$SCRIPT_DIR/switch-gpu-mode.sh" /usr/lib/clevo-control-panel/switch-gpu-mode.sh
+chmod 0755 "$SCRIPT_DIR/switch-gpu-mode.sh"
+
 APPS_DIR="$USER_HOME/.local/share/applications"
 ICON_DIR="$USER_HOME/.local/share/icons/hicolor/scalable/apps"
 sudo -u "$TARGET_USER" mkdir -p "$APPS_DIR" "$ICON_DIR"
@@ -128,4 +133,15 @@ if [ ! -f /etc/sudoers.d/clevo-control-panel ]; then
   echo
   echo "Without this, those three modes will just control fan behavior,"
   echo "same as before -- CPU/GPU power scaling is skipped."
+fi
+
+if [ ! -f /etc/sudoers.d/clevo-control-panel-gpu-mode ]; then
+  echo
+  echo "Another optional, manual step: to let the GPU Mode section switch"
+  echo "modes without a password prompt every time, run:"
+  echo
+  echo "  bash $SCRIPT_DIR/setup-gpu-mode-sudoers.sh"
+  echo
+  echo "Without this, GPU Mode still shows your current mode, it just can't"
+  echo "switch it."
 fi

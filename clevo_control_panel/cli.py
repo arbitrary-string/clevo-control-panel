@@ -19,6 +19,7 @@ from .battery import ChargeThresholdError, ChargeThresholds
 from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .fan import FanControl, FanControlError
 from .fan_curve import STATUS_FILE, FanCurveConfig, validate_curve
+from .gpu_mode import GpuModeError, detect_current_mode, switch_to as gpu_mode_switch_to
 from .performance import MODES as PERFORMANCE_MODES
 from .performance import POWER_PROFILE_MODES
 from .performance import PerformanceMode, PerformanceModeError
@@ -431,6 +432,22 @@ def cmd_fan_set(args):
         print("fan control released to firmware auto")
 
 
+def cmd_gpu_mode_status(args):
+    mode = detect_current_mode()
+    if mode is None:
+        print("not applicable on this system")
+        return
+    print(f"current mode: {mode}")
+
+
+def cmd_gpu_mode_switch(args):
+    try:
+        output = gpu_mode_switch_to(args.mode)
+    except GpuModeError as e:
+        die(str(e))
+    print(output or f"requested {args.mode} mode -- reboot to apply")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=(
@@ -591,6 +608,20 @@ def main():
         "process exits and stops petting",
     )
     p.set_defaults(func=cmd_fan_set)
+
+    gpu_mode = top.add_parser(
+        "gpu-mode", help="BIOS-level GPU MUX mode (MSHybrid/dGPU), board-specific"
+    )
+    gsub = gpu_mode.add_subparsers(dest="command", required=True)
+
+    p = gsub.add_parser("status", help="show current GPU mode")
+    p.set_defaults(func=cmd_gpu_mode_status)
+
+    p = gsub.add_parser(
+        "switch", help="request a mode switch (writes firmware NVRAM; reboot to apply)"
+    )
+    p.add_argument("mode", choices=["dgpu", "mshybrid"])
+    p.set_defaults(func=cmd_gpu_mode_switch)
 
     args = parser.parse_args()
     args.func(args)

@@ -223,6 +223,10 @@ path, since it touches sudoers. In a repo checkout that's
 `data/setup-power-profile-sudoers.sh`; for a `.deb` install it's
 `/usr/lib/clevo-control-panel/setup-power-profile-sudoers.sh`.
 
+Likewise, `setup-gpu-mode-sudoers.sh` (see "GPU MUX mode switching"
+below) is its own separate, optional, manually-run step for the same
+reason — same paths, just with `gpu-mode` in place of `power-profile`.
+
 ## Running
 
 ```
@@ -356,6 +360,50 @@ installed automatically: run `setup-power-profile-sudoers.sh` yourself
 when you're ready (it validates with `visudo -c` before touching
 anything real). Without it, these three modes still work exactly as
 before — fan control only, CPU/GPU scaling silently skipped.
+
+## GPU MUX mode switching
+
+On boards with a hardware display MUX (the panel wired directly to
+either the iGPU or dGPU, not the usual Optimus-style always-through-the-
+iGPU setup), this laptop's BIOS exposes two modes — MSHybrid (both GPUs
+available, panel muxed to the iGPU) and dGPU (panel muxed directly to
+the NVIDIA GPU, no copy-through overhead — see the full-range OLED
+brightness feature below, which only applies in this mode). Normally
+switching requires rebooting into BIOS Setup.
+
+The GPU Mode section (Performance page) shows your current mode
+(detected from what's actually enumerated on the PCI bus — no privileged
+access needed for that) and, if the sudoers step below is installed, a
+button to request the other mode. This works by writing a single byte to
+a UEFI NVRAM variable — found by diffing every BIOS Setup-related NVRAM
+variable between a real, BIOS-confirmed boot in each mode; exactly one
+byte differed in a way that turned out to be both necessary and
+sufficient, confirmed by writing only that byte (nothing else touched)
+and getting a real, verified mode change on reboot, in both directions.
+**This only writes a pending request to firmware — it never touches live
+GPU/display state, and always requires a manual reboot to actually take
+effect** (the button makes this explicit; there's no auto-reboot).
+
+This is deliberately not done via the ACPI `\_SB.PC00.GFX0._DSM` method
+some laptops expose for this (found and investigated first) — that path
+has a confirmed live side effect: invoking it with an active display
+session hangs the system hard enough to need a forced power-off, and
+even a clean reboot afterward never actually persisted the requested
+mode. The NVRAM write this feature actually uses has no such risk.
+
+**Board-specific**: the exact NVRAM variable/offset/values were reverse-
+engineered for this exact board's firmware (Insyde H2O, Clevo/Tongfang
+L550JNP). `switch-gpu-mode.sh` refuses to act if the byte it finds
+doesn't match one of the two known values, rather than guessing, but
+this whole mechanism is not expected to be portable to different
+hardware without redoing the same diffing investigation.
+
+Same sudoers pattern as CPU/GPU power scaling above, and its own
+separate opt-in: `switch-gpu-mode.sh` is the narrowly-scoped script (only
+the exact arguments `dgpu` or `mshybrid`, nothing else), and
+`setup-gpu-mode-sudoers.sh` installs the rule granting `clevoctl` passwordless
+access to it. Without that step, GPU Mode still shows your current mode,
+it just can't switch it.
 
 ## Automatic profile switching
 

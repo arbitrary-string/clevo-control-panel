@@ -27,6 +27,7 @@ from .charge_override import get_pending_revert, set_pending_revert
 from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .fan import FanControl, FanControlError
 from .fan_curve import FanCurveConfig, validate_curve
+from .gpu_mode import GpuModeError, detect_current_mode, switch_to as gpu_mode_switch_to
 from .performance import PerformanceMode, PerformanceModeError
 
 # Retrofuturistic instrument-panel palette for the Dashboard page only --
@@ -679,6 +680,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         main_box.append(self._build_mode_section())
         main_box.append(self._build_fan_curve_section())
         main_box.append(self._build_oled_luminance_section())
+        main_box.append(self._build_gpu_mode_section())
 
         page = Adw.NavigationPage(title="Performance")
         page.set_child(toolbar_view)
@@ -1128,6 +1130,79 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
                 f"Error: {status.get('reason') or 'unknown'}"
             )
 
+    def _build_gpu_mode_section(self):
+        # No confirmation dialog before switching, matching this app's
+        # existing pattern for the fan release button -- the button's own
+        # label states the target mode and that a reboot is required, and
+        # a toast confirms what actually happened, rather than adding a
+        # modal this app has no other precedent for.
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+
+        explainer = Gtk.Label(
+            label=(
+                "This board can mux the panel directly to either GPU. "
+                "Switching only writes a pending firmware request -- it "
+                "never touches live GPU/display state -- and always "
+                "requires a manual reboot to actually take effect."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+        explainer.add_css_class("dim-label")
+        box.append(explainer)
+
+        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.gpu_mode_status_icon = Gtk.Image.new_from_icon_name(
+            "dialog-information-symbolic"
+        )
+        status_row.append(self.gpu_mode_status_icon)
+        self.gpu_mode_status_label = Gtk.Label(xalign=0, wrap=True)
+        self.gpu_mode_status_label.add_css_class("dim-label")
+        status_row.append(self.gpu_mode_status_label)
+        box.append(status_row)
+
+        self.gpu_mode_switch_button = Gtk.Button()
+        self.gpu_mode_switch_button.set_halign(Gtk.Align.START)
+        self.gpu_mode_switch_button.connect("clicked", self._on_gpu_mode_switch_clicked)
+        box.append(self.gpu_mode_switch_button)
+
+        return self._wrap_group("GPU Mode", box)
+
+    _GPU_MODE_LABELS = {"mshybrid": "MSHybrid", "dgpu": "dGPU"}
+    _GPU_MODE_OTHER = {"mshybrid": "dgpu", "dgpu": "mshybrid"}
+
+    def _refresh_gpu_mode_status(self):
+        mode = detect_current_mode()
+        if mode is None:
+            self.gpu_mode_status_icon.set_from_icon_name("dialog-information-symbolic")
+            self.gpu_mode_status_label.set_label("Not applicable on this system")
+            self.gpu_mode_switch_button.set_visible(False)
+            return
+
+        self.gpu_mode_switch_button.set_visible(True)
+        self.gpu_mode_status_icon.set_from_icon_name("emblem-ok-symbolic")
+        self.gpu_mode_status_label.set_label(
+            f"Current mode: {self._GPU_MODE_LABELS[mode]}"
+        )
+        target = self._GPU_MODE_OTHER[mode]
+        self.gpu_mode_switch_button.set_label(
+            f"Switch to {self._GPU_MODE_LABELS[target]} Mode (reboot required)"
+        )
+        self._gpu_mode_switch_target = target
+
+    def _on_gpu_mode_switch_clicked(self, _button):
+        target = getattr(self, "_gpu_mode_switch_target", None)
+        if not target:
+            return
+        try:
+            gpu_mode_switch_to(target)
+        except GpuModeError as e:
+            self._performance_toast(f"Couldn't switch GPU mode: {e}")
+            return
+        self._performance_toast(
+            f"Requested {self._GPU_MODE_LABELS[target]} mode -- reboot to apply."
+        )
+
     def _curve_point_rows(self):
         rows = []
         child = self.fan_curve_points_box.get_first_child()
@@ -1360,6 +1435,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self._sync_auto_switch_ui()
         self._refresh_fan_daemon_status()
         self._refresh_oled_luminance_status()
+        self._refresh_gpu_mode_status()
 
         if not self.performance:
             self.performance_banner.set_title(

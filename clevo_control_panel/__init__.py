@@ -10,6 +10,8 @@ kernel-level watchdog, plus automatic display refresh-rate switching by
 power source. On boards with an NVIDIA dGPU driving an OLED panel
 directly in dGPU mode, also extends the standard brightness slider to
 the panel's real full-range maximum via direct DPCD writes, working
-around the legacy brightness path's much lower cap."""
+around the legacy brightness path's much lower cap. On boards with a
+hardware GPU MUX, also supports switching BIOS-level GPU mode
+(MSHybrid/dGPU) via a firmware NVRAM write, applied on next reboot."""
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"

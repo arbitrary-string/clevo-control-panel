@@ -50,6 +50,16 @@ install -m 0755 "$REPO_ROOT/data/apply-power-profile.sh" \
 install -m 0755 "$REPO_ROOT/data/setup-power-profile-sudoers.sh" \
   "$PKG_ROOT/usr/lib/clevo-control-panel/setup-power-profile-sudoers.sh"
 
+# GPU MUX mode switching (see gpu_mode.py's module docstring for the full
+# background). Same "packaged but never auto-run" treatment as the
+# power-profile sudoers setup above, and its own separate opt-in script
+# rather than folded into that one -- see setup-gpu-mode-sudoers.sh's own
+# comment for why.
+install -m 0755 "$REPO_ROOT/data/switch-gpu-mode.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/switch-gpu-mode.sh"
+install -m 0755 "$REPO_ROOT/data/setup-gpu-mode-sudoers.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/setup-gpu-mode-sudoers.sh"
+
 # Launchers.
 cat > "$PKG_ROOT/usr/bin/clevo-control-panel" <<'LAUNCHER'
 #!/usr/bin/env python3
