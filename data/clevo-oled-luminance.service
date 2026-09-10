@@ -1,0 +1,55 @@
+# A system unit, not a --user one -- unlike clevo-fan-curve.service,
+# this genuinely can't be a --user unit: confirmed live that the
+# NVIDIA RM API's CMD_DP_AUXCH_CTRL control (the actual DPCD AUX read/
+# write, as opposed to display enumeration, which is unprivileged) fails
+# with NV_ERR_INSUFFICIENT_PERMISSIONS for an ordinary user even though
+# /dev/nvidia0 and /dev/nvidiactl are world read-write on this system --
+# a --user unit can never run as root, so it structurally cannot make
+# this call at all.
+#
+# Given that, this is ordered after graphical.target rather than a
+# bare system-unit default (multi-user.target) -- the same spirit as
+# the --user-unit boundary on the fan curve daemon (see that unit's own
+# comment: a prior incident traced a hard power-off to a reverse-
+# engineered hardware command issued from a system unit at early boot,
+# in a less-initialized state than any interactive testing had
+# exercised). This mechanism is a standard DPCD AUX write, not a raw EC
+# command, and reads/writes here can't hang the display the way that
+# incident or the GPU MUX investigation did -- but by the time
+# graphical.target is reached, the GPU/DRM subsystem this RM API talks
+# to is already fully initialized by the display manager's own Wayland
+# session regardless, which is the actual property this ordering buys,
+# not just "wait a while."
+[Unit]
+Description=Clevo Control Panel full-range OLED brightness (dGPU mode only)
+Documentation=https://github.com/arbitrary-string/clevo-control-panel
+ConditionPathExists=/dev/nvidia0
+After=graphical.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/clevo-oled-luminance-daemon
+Restart=on-failure
+RestartSec=2
+
+ReadWritePaths=/var/lib/clevo-control-panel
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=graphical.target

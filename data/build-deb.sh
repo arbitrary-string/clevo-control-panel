@@ -90,6 +90,19 @@ if __name__ == "__main__":
 LAUNCHER
 chmod 0755 "$PKG_ROOT/usr/bin/clevo-fan-curve-daemon"
 
+cat > "$PKG_ROOT/usr/bin/clevo-oled-luminance-daemon" <<'LAUNCHER'
+#!/usr/bin/env python3
+import sys
+
+sys.path.insert(0, "/usr/lib/clevo-control-panel")
+
+from clevo_control_panel.oled_luminance_daemon import main
+
+if __name__ == "__main__":
+    sys.exit(main())
+LAUNCHER
+chmod 0755 "$PKG_ROOT/usr/bin/clevo-oled-luminance-daemon"
+
 # Desktop entry + autostart entry + icon.
 sed 's#__EXEC_PATH__#/usr/bin/clevo-control-panel#' "$REPO_ROOT/data/clevo-control-panel.desktop.in" \
   > "$PKG_ROOT/usr/share/applications/clevo-control-panel.desktop"
@@ -113,11 +126,25 @@ install -m 0644 "$REPO_ROOT/data/save-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/save-keyboard-color.service"
 install -m 0644 "$REPO_ROOT/data/restore-keyboard-color.service" \
   "$PKG_ROOT/usr/lib/systemd/system/restore-keyboard-color.service"
+# Full-range OLED brightness in dGPU mode is a *system* unit, not a
+# --user one, unlike the fan curve daemon just below -- see that unit's
+# own comment for why it structurally can't be a --user unit (the
+# NVIDIA RM API's AUX-channel control call needs root even though the
+# device nodes themselves are world read-write). Ordered after
+# graphical.target rather than a bare default target as the closest
+# available equivalent to the fan-curve daemon's own boundary; see its
+# unit file for the full reasoning either way. ConditionPathExists=
+# /dev/nvidia0 makes it a safe no-op on any board/mode without an
+# NVIDIA GPU at all (e.g. MSHybrid mode); oled_luminance_daemon.py's
+# own main() exits cleanly rather than restart-looping on any board
+# where the panel doesn't advertise PANEL_LUMINANCE_CONTROL_CAP.
+install -m 0644 "$REPO_ROOT/data/clevo-oled-luminance.service" \
+  "$PKG_ROOT/usr/lib/systemd/system/clevo-oled-luminance.service"
 install -m 0644 "$REPO_ROOT/data/clevo-fan-curve.service" \
   "$PKG_ROOT/usr/lib/systemd/user/clevo-fan-curve.service"
-# Auto-enables the unit above the first time each user's own systemd
-# --user instance ever initializes (e.g. their first login after this
-# package is installed) -- setup-runtime.sh additionally enables it
+# Auto-enables clevo-fan-curve.service the first time each user's own
+# systemd --user instance ever initializes (e.g. their first login after
+# this package is installed) -- setup-runtime.sh additionally enables it
 # directly for whichever user runs the install/upgrade itself, since a
 # preset alone wouldn't retroactively apply to a user session that
 # already existed before this package was installed.
@@ -202,6 +229,7 @@ set -e
 case "$1" in
   remove|purge)
     systemctl disable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
+    systemctl disable --now clevo-oled-luminance.service 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
 
     # clevo-fan-curve.service is a --user unit (see the comment at the

@@ -7,6 +7,9 @@ scaling via TLP/nvidia-smi) on boards with the clevo-acpi driver's
 performance_mode support, and (on boards with the fan control attributes)
 a continuous temperature-driven fan curve with a background daemon and
 kernel-level watchdog, plus automatic display refresh-rate switching by
-power source."""
+power source. On boards with an NVIDIA dGPU driving an OLED panel
+directly in dGPU mode, also extends the standard brightness slider to
+the panel's real full-range maximum via direct DPCD writes, working
+around the legacy brightness path's much lower cap."""
 
-__version__ = "0.9.6"
+__version__ = "0.10.0"

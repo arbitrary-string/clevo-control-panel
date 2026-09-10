@@ -97,6 +97,14 @@ done
 
 systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now save-keyboard-color.service restore-keyboard-color.service 2>/dev/null || true
+# A plain system unit, not a --user one -- see the comment at the top of
+# clevo-oled-luminance.service for why it structurally has to be (the
+# NVIDIA RM API's AUX-channel control needs root, unlike everything else
+# this app touches). Its own ConditionPathExists guards boards/modes
+# without an NVIDIA GPU driving the panel; the daemon itself exits
+# cleanly on a panel that doesn't advertise PANEL_LUMINANCE_CONTROL_CAP
+# -- so, like the two services above, always enabled unconditionally.
+systemctl enable --now clevo-oled-luminance.service 2>/dev/null || true
 
 # A systemd --user unit, not a system one, enabled for $TARGET_USER
 # specifically -- see the comment at the top of clevo-fan-curve.service

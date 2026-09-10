@@ -48,6 +48,13 @@ fi
 install -m 0644 "$SCRIPT_DIR/99-clevo-control-panel.rules" /etc/udev/rules.d/99-clevo-control-panel.rules
 install -m 0644 "$SCRIPT_DIR/save-keyboard-color.service" /etc/systemd/system/save-keyboard-color.service
 install -m 0644 "$SCRIPT_DIR/restore-keyboard-color.service" /etc/systemd/system/restore-keyboard-color.service
+# A plain system unit, not a --user one -- see the comment at the top of
+# clevo-oled-luminance.service for why it structurally has to be (the
+# NVIDIA RM API's AUX-channel control needs root, unlike everything else
+# this app touches).
+install -m 0644 "$SCRIPT_DIR/clevo-oled-luminance.service" /etc/systemd/system/clevo-oled-luminance.service
+systemctl daemon-reload
+systemctl enable --now clevo-oled-luminance.service 2>/dev/null || true
 
 # A systemd --user unit, not a system one -- see the comment at the top
 # of clevo-fan-curve.service for why (never touch this EC interface
@@ -59,13 +66,14 @@ sudo -u "$TARGET_USER" mkdir -p "$USER_SYSTEMD_DIR"
 install -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" \
   "$SCRIPT_DIR/clevo-fan-curve.service" "$USER_SYSTEMD_DIR/clevo-fan-curve.service"
 
-# The systemd units above hardcode /usr/bin/clevo-control-panel-cli and
-# /usr/bin/clevo-fan-curve-daemon (absolute paths, since a .deb install
-# would provide them there). A repo checkout has no such files on PATH
-# otherwise, so symlink them in.
+# The systemd units above hardcode /usr/bin/clevo-control-panel-cli,
+# /usr/bin/clevo-fan-curve-daemon, and /usr/bin/clevo-oled-luminance-daemon
+# (absolute paths, since a .deb install would provide them there). A repo
+# checkout has no such files on PATH otherwise, so symlink them in.
 ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel-cli" /usr/bin/clevo-control-panel-cli
 ln -sf "$SCRIPT_DIR/../bin/clevo-control-panel" /usr/bin/clevo-control-panel
 ln -sf "$SCRIPT_DIR/../bin/clevo-fan-curve-daemon" /usr/bin/clevo-fan-curve-daemon
+ln -sf "$SCRIPT_DIR/../bin/clevo-oled-luminance-daemon" /usr/bin/clevo-oled-luminance-daemon
 
 # apply-power-profile.sh needs a stable absolute path too, since it's
 # referenced by exact path in the sudoers rule that grants the clevoctl

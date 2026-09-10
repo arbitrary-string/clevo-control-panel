@@ -678,6 +678,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         main_box.append(self._build_auto_switch_section())
         main_box.append(self._build_mode_section())
         main_box.append(self._build_fan_curve_section())
+        main_box.append(self._build_oled_luminance_section())
 
         page = Adw.NavigationPage(title="Performance")
         page.set_child(toolbar_view)
@@ -1032,6 +1033,101 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
 
         return self._wrap_group("Custom Fan Curve", box)
 
+    def _build_oled_luminance_section(self):
+        # Purely informational -- no toggle here, unlike the fan curve
+        # section above. Unlike a manual override, there's no user
+        # decision to make: this either applies (dGPU mode, a panel that
+        # advertises PANEL_LUMINANCE_CONTROL_CAP) or it's a silent no-op
+        # everywhere else, handled entirely by clevo-oled-luminance.service
+        # -- this section just surfaces which of those is currently true,
+        # since "why does the brightness slider suddenly reach so much
+        # higher" deserves an explanation somewhere in the app.
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+
+        explainer = Gtk.Label(
+            label=(
+                "On this panel, in dGPU mode, the legacy brightness "
+                "control tops out well below the panel's real maximum. "
+                "A background service extends your existing brightness "
+                "slider/hotkeys to the panel's full range automatically "
+                "-- nothing to configure here."
+            ),
+            xalign=0,
+            wrap=True,
+        )
+        explainer.add_css_class("dim-label")
+        box.append(explainer)
+
+        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.oled_luminance_status_icon = Gtk.Image.new_from_icon_name(
+            "dialog-information-symbolic"
+        )
+        status_row.append(self.oled_luminance_status_icon)
+        self.oled_luminance_status_label = Gtk.Label(xalign=0, wrap=True)
+        self.oled_luminance_status_label.add_css_class("dim-label")
+        status_row.append(self.oled_luminance_status_label)
+        box.append(status_row)
+
+        return self._wrap_group("Full-Range OLED Brightness", box)
+
+    @staticmethod
+    def _read_oled_luminance_status_file():
+        try:
+            return json.loads(
+                Path("/var/lib/clevo-control-panel/oled-luminance-status.json").read_text()
+            )
+        except (OSError, ValueError):
+            return None
+
+    def _refresh_oled_luminance_status(self):
+        status = self._read_oled_luminance_status_file()
+        if status is None:
+            # Expected, common outcome: MSHybrid mode, no NVIDIA GPU, or
+            # the service just hasn't run yet on this boot -- not an
+            # error worth alarming over, unlike the fan daemon (where a
+            # missing status file could mean a stuck fan).
+            self.oled_luminance_status_icon.set_from_icon_name(
+                "dialog-information-symbolic"
+            )
+            self.oled_luminance_status_label.set_label(
+                "Not applicable (not in dGPU mode, or no compatible panel)"
+            )
+            return
+
+        state = status.get("state")
+        if state == "active":
+            self.oled_luminance_status_icon.set_from_icon_name("emblem-ok-symbolic")
+            nits = status.get("current_nits")
+            self.oled_luminance_status_label.set_label(
+                f"Active -- current target {nits:.0f} cd/m²"
+                if nits is not None
+                else "Active"
+            )
+        elif state == "disabled":
+            self.oled_luminance_status_icon.set_from_icon_name(
+                "dialog-information-symbolic"
+            )
+            self.oled_luminance_status_label.set_label("Disabled (see oled-luminance.json)")
+        elif state == "unsupported_panel":
+            self.oled_luminance_status_icon.set_from_icon_name(
+                "dialog-information-symbolic"
+            )
+            self.oled_luminance_status_label.set_label(
+                "Not applicable (this panel doesn't support it)"
+            )
+        elif state == "not_applicable":
+            self.oled_luminance_status_icon.set_from_icon_name(
+                "dialog-information-symbolic"
+            )
+            self.oled_luminance_status_label.set_label(
+                "Not applicable (not in dGPU mode, or no compatible panel)"
+            )
+        else:
+            self.oled_luminance_status_icon.set_from_icon_name("dialog-warning-symbolic")
+            self.oled_luminance_status_label.set_label(
+                f"Error: {status.get('reason') or 'unknown'}"
+            )
+
     def _curve_point_rows(self):
         rows = []
         child = self.fan_curve_points_box.get_first_child()
@@ -1263,6 +1359,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
     def _refresh_performance_status(self):
         self._sync_auto_switch_ui()
         self._refresh_fan_daemon_status()
+        self._refresh_oled_luminance_status()
 
         if not self.performance:
             self.performance_banner.set_title(
