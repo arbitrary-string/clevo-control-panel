@@ -14,4 +14,4 @@ around the legacy brightness path's much lower cap. On boards with a
 hardware GPU MUX, also supports switching BIOS-level GPU mode
 (MSHybrid/dGPU) via a firmware NVRAM write, applied on next reboot."""
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"

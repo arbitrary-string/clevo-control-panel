@@ -147,6 +147,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self._refresh_system_status()
         self._refresh_battery_status()
         self._refresh_performance_status()
+        self._refresh_gpu_mode_status()
 
         # Performance mode can change from outside this window (the tray
         # menu's quick-select, or the CLI), unlike keyboard/battery, which
@@ -192,6 +193,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self.battery_page = self._build_battery_page()
         self.performance_page = self._build_performance_page()
         self.dashboard_page = self._build_dashboard_page()
+        self.gpu_page = self._build_gpu_page()
 
         self.split_view = Adw.NavigationSplitView()
         self.split_view.set_min_sidebar_width(180)
@@ -223,6 +225,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         )
         listbox.append(self._make_sidebar_row("battery-good-symbolic", "Battery"))
         listbox.append(self._make_sidebar_row("input-keyboard-symbolic", "Keyboard"))
+        listbox.append(self._make_sidebar_row("video-display-symbolic", "GPU"))
         listbox.connect("row-selected", self._on_sidebar_row_selected)
         listbox.select_row(listbox.get_row_at_index(0))
 
@@ -254,6 +257,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             "battery": self.battery_page,
             "performance": self.performance_page,
             "dashboard": self.dashboard_page,
+            "gpu": self.gpu_page,
         }
         self.split_view.set_content(pages[row.page_name])
         self._current_page_name = row.page_name
@@ -681,7 +685,6 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         main_box.append(self._build_mode_section())
         main_box.append(self._build_fan_curve_section())
         main_box.append(self._build_oled_luminance_section())
-        main_box.append(self._build_gpu_mode_section())
 
         page = Adw.NavigationPage(title="Performance")
         page.set_child(toolbar_view)
@@ -1198,7 +1201,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         try:
             gpu_mode_switch_to(target)
         except GpuModeError as e:
-            self._performance_toast(f"Couldn't switch GPU mode: {e}")
+            self._gpu_toast(f"Couldn't switch GPU mode: {e}")
             return
 
         # A dialog with an explicit choice, not just a toast telling the
@@ -1226,7 +1229,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         try:
             subprocess.run(["systemctl", "reboot"], timeout=5)
         except (OSError, subprocess.TimeoutExpired) as e:
-            self._performance_toast(f"Couldn't reboot: {e}")
+            self._gpu_toast(f"Couldn't reboot: {e}")
 
     def _curve_point_rows(self):
         rows = []
@@ -1460,7 +1463,6 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         self._sync_auto_switch_ui()
         self._refresh_fan_daemon_status()
         self._refresh_oled_luminance_status()
-        self._refresh_gpu_mode_status()
 
         if not self.performance:
             self.performance_banner.set_title(
@@ -1536,7 +1538,47 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
 
     def _periodic_performance_refresh(self):
         self._refresh_performance_status()
+        self._refresh_gpu_mode_status()
         return GLib.SOURCE_CONTINUE
+
+    # ---- GPU page ----
+
+    def _build_gpu_page(self):
+        toolbar_view = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Adw.WindowTitle(title="GPU"))
+
+        settings_btn = Gtk.Button(icon_name="preferences-system-symbolic")
+        settings_btn.set_tooltip_text("System Integration Settings")
+        settings_btn.connect("clicked", self._on_open_settings)
+        header.pack_end(settings_btn)
+        toolbar_view.add_top_bar(header)
+
+        self.gpu_toast_overlay = Adw.ToastOverlay()
+
+        scroller = Gtk.ScrolledWindow(vexpand=True)
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        clamp = Adw.Clamp(maximum_size=520)
+        clamp.set_margin_top(12)
+        clamp.set_margin_bottom(24)
+        clamp.set_margin_start(12)
+        clamp.set_margin_end(12)
+
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        clamp.set_child(main_box)
+        scroller.set_child(clamp)
+        self.gpu_toast_overlay.set_child(scroller)
+        toolbar_view.set_content(self.gpu_toast_overlay)
+
+        main_box.append(self._build_gpu_mode_section())
+
+        page = Adw.NavigationPage(title="GPU")
+        page.set_child(toolbar_view)
+        return page
+
+    def _gpu_toast(self, message):
+        self.gpu_toast_overlay.add_toast(Adw.Toast(title=message, timeout=4))
 
     # ---- Dashboard ----
     #
