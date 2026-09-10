@@ -226,6 +226,8 @@ path, since it touches sudoers. In a repo checkout that's
 Likewise, `setup-gpu-mode-sudoers.sh` (see "GPU MUX mode switching"
 below) is its own separate, optional, manually-run step for the same
 reason — same paths, just with `gpu-mode` in place of `power-profile`.
+Same again for `setup-prime-select-sudoers.sh` (`prime-select` in place
+of `power-profile`) — the safety net described in that same section.
 
 ## Running
 
@@ -371,10 +373,10 @@ the NVIDIA GPU, no copy-through overhead — see the full-range OLED
 brightness feature below, which only applies in this mode). Normally
 switching requires rebooting into BIOS Setup.
 
-The GPU Mode section (Performance page) shows your current mode
-(detected from what's actually enumerated on the PCI bus — no privileged
-access needed for that) and, if the sudoers step below is installed, a
-button to request the other mode. This works by writing a single byte to
+The GPU page's GPU Mode section shows your current mode (detected from
+what's actually enumerated on the PCI bus — no privileged access needed
+for that) and, if the sudoers step below is installed, a button to
+request the other mode. This works by writing a single byte to
 a UEFI NVRAM variable — found by diffing every BIOS Setup-related NVRAM
 variable between a real, BIOS-confirmed boot in each mode; exactly one
 byte differed in a way that turned out to be both necessary and
@@ -404,6 +406,20 @@ the exact arguments `dgpu` or `mshybrid`, nothing else), and
 `setup-gpu-mode-sudoers.sh` installs the rule granting `clevoctl` passwordless
 access to it. Without that step, GPU Mode still shows your current mode,
 it just can't switch it.
+
+**prime-select safety net.** Switching to dGPU mode disconnects the Intel
+iGPU from the panel entirely — if `prime-select` is still set to `intel`
+(session bound to Intel-only), the next boot comes up to a black screen,
+since nothing is telling the graphics stack to use the GPU actually wired
+to the panel anymore. If the `setup-prime-select-sudoers.sh` step below is
+installed, clicking "Reboot Now" in that situation first switches
+`prime-select` to `on-demand` (showing a "Please Wait" dialog — it runs
+`update-initramfs`/`update-grub` internally, which can take tens of
+seconds) before actually rebooting; "Reboot Later" does the same fix
+quietly in the background instead. Without that sudoers step, switching to
+dGPU mode while `prime-select` is `intel` can leave you with no display
+after reboot until you fix it manually (`sudo prime-select on-demand` or
+`nvidia`, from a TTY or over SSH).
 
 ## Automatic profile switching
 

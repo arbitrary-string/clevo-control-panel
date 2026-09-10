@@ -60,6 +60,14 @@ install -m 0755 "$REPO_ROOT/data/switch-gpu-mode.sh" \
 install -m 0755 "$REPO_ROOT/data/setup-gpu-mode-sudoers.sh" \
   "$PKG_ROOT/usr/lib/clevo-control-panel/setup-gpu-mode-sudoers.sh"
 
+# prime-select safety net for the dGPU-mode switch above (see
+# prime_select.py's module docstring). Same "packaged but never auto-run"
+# treatment, its own separate opt-in sudoers script.
+install -m 0755 "$REPO_ROOT/data/set-prime-select.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/set-prime-select.sh"
+install -m 0755 "$REPO_ROOT/data/setup-prime-select-sudoers.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/setup-prime-select-sudoers.sh"
+
 # Launchers.
 cat > "$PKG_ROOT/usr/bin/clevo-control-panel" <<'LAUNCHER'
 #!/usr/bin/env python3

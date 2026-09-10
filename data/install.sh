@@ -89,6 +89,11 @@ chmod 0755 "$SCRIPT_DIR/apply-power-profile.sh"
 ln -sf "$SCRIPT_DIR/switch-gpu-mode.sh" /usr/lib/clevo-control-panel/switch-gpu-mode.sh
 chmod 0755 "$SCRIPT_DIR/switch-gpu-mode.sh"
 
+# Same reasoning again: set-prime-select.sh needs a stable absolute path
+# for its own sudoers rule to reference.
+ln -sf "$SCRIPT_DIR/set-prime-select.sh" /usr/lib/clevo-control-panel/set-prime-select.sh
+chmod 0755 "$SCRIPT_DIR/set-prime-select.sh"
+
 APPS_DIR="$USER_HOME/.local/share/applications"
 ICON_DIR="$USER_HOME/.local/share/icons/hicolor/scalable/apps"
 sudo -u "$TARGET_USER" mkdir -p "$APPS_DIR" "$ICON_DIR"
@@ -144,4 +149,17 @@ if [ ! -f /etc/sudoers.d/clevo-control-panel-gpu-mode ]; then
   echo
   echo "Without this, GPU Mode still shows your current mode, it just can't"
   echo "switch it."
+fi
+
+if [ ! -f /etc/sudoers.d/clevo-control-panel-prime-select ]; then
+  echo
+  echo "Another optional, manual step: to let switching to dGPU mode also"
+  echo "fix an \"intel\"-only prime-select setting for you automatically"
+  echo "(avoiding a black screen on the next boot), run:"
+  echo
+  echo "  bash $SCRIPT_DIR/setup-prime-select-sudoers.sh"
+  echo
+  echo "Without this, switching to dGPU mode while prime-select is set to"
+  echo "\"intel\" can leave you with no display after reboot until you fix it"
+  echo "manually (sudo prime-select on-demand, from a TTY or over SSH)."
 fi

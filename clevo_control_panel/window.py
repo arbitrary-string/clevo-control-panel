@@ -30,6 +30,7 @@ from .fan import FanControl, FanControlError
 from .fan_curve import FanCurveConfig, validate_curve
 from .gpu_mode import GpuModeError, detect_current_mode, switch_to as gpu_mode_switch_to
 from .performance import PerformanceMode, PerformanceModeError
+from .prime_select import query as prime_select_query, set_on_demand_async
 
 # Retrofuturistic instrument-panel palette for the Dashboard page only --
 # deliberately different from the rest of the app's normal libadwaita
@@ -1204,28 +1205,123 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             self._gpu_toast(f"Couldn't switch GPU mode: {e}")
             return
 
+        # Switching to dGPU-only mode disconnects the Intel iGPU from the
+        # panel entirely -- if prime-select is still set to "intel", the
+        # session would come up bound to a GPU with nowhere to draw to,
+        # i.e. a black screen. Steer it to "on-demand" automatically
+        # (below, once the user commits to a reboot) rather than making
+        # the user discover and fix this themselves.
+        needs_prime_fix = target == "dgpu" and prime_select_query() == "intel"
+
         # A dialog with an explicit choice, not just a toast telling the
         # user to go reboot themselves -- "Reboot Now" is still entirely
         # the user's own click, same as GNOME's own Power Off/Restart
         # menu, not something this app decides to do on its own.
-        dialog = Adw.AlertDialog(
-            heading="Reboot Required",
-            body=(
-                f"Requested {self._GPU_MODE_LABELS[target]} mode. This only "
-                "takes effect after a reboot."
-            ),
+        body = (
+            f"Requested {self._GPU_MODE_LABELS[target]} mode. This only "
+            "takes effect after a reboot."
         )
+        if needs_prime_fix:
+            body += (
+                " Your GPU driver preference is currently set to "
+                "Intel-only, which would leave the display blank in dGPU "
+                "mode -- this will also switch it to On-Demand first."
+            )
+
+        dialog = Adw.AlertDialog(heading="Reboot Required", body=body)
         dialog.add_response("later", "Reboot Later")
         dialog.add_response("now", "Reboot Now")
         dialog.set_response_appearance("now", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("later")
         dialog.set_close_response("later")
-        dialog.connect("response", self._on_gpu_mode_reboot_response)
+        dialog.connect(
+            "response", self._on_gpu_mode_reboot_response, needs_prime_fix
+        )
         dialog.present(self)
 
-    def _on_gpu_mode_reboot_response(self, _dialog, response):
-        if response != "now":
+    def _on_gpu_mode_reboot_response(self, dialog, response, needs_prime_fix):
+        if response not in ("now", "later"):
             return
+
+        if not needs_prime_fix:
+            if response == "now":
+                self._reboot_now()
+            return
+
+        if response == "later":
+            # Nothing else is waiting on this, so just fix it quietly in
+            # the background -- done well before the user gets around to
+            # rebooting themselves, whenever that is.
+            set_on_demand_async(self._on_prime_select_fixed_later)
+            return
+
+        # "now": this has to finish before actually rebooting --
+        # interrupting prime-select's own update-initramfs/update-grub
+        # run by rebooting out from under it would be a bad idea. Adw.
+        # AlertDialog closes itself the instant a response is activated,
+        # *before* this handler runs (confirmed: mutating the same
+        # dialog object here into a "please wait" state had no visible
+        # effect -- it was already gone) -- so show a fresh plain dialog
+        # instead, with closing disabled so it can't be dismissed early.
+        wait_dialog = self._show_please_wait_dialog(
+            "Switching your GPU driver preference to On-Demand before "
+            "reboot…"
+        )
+
+        def on_fixed(success, message):
+            wait_dialog.set_can_close(True)
+            wait_dialog.close()
+            if not success:
+                self._gpu_toast(
+                    "Couldn't switch GPU driver preference to On-Demand"
+                    + (f": {message}" if message else "")
+                    + " -- not rebooting automatically. Run 'sudo "
+                    "prime-select on-demand' yourself before rebooting."
+                )
+                return
+            self._reboot_now()
+
+        set_on_demand_async(on_fixed)
+
+    def _show_please_wait_dialog(self, body_text):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_margin_top(24)
+        box.set_margin_bottom(24)
+        box.set_margin_start(24)
+        box.set_margin_end(24)
+
+        spinner = Gtk.Spinner(spinning=True)
+        spinner.set_size_request(32, 32)
+        spinner.set_halign(Gtk.Align.CENTER)
+        box.append(spinner)
+
+        label = Gtk.Label(label=body_text, wrap=True, justify=Gtk.Justification.CENTER)
+        box.append(label)
+
+        dialog = Adw.Dialog()
+        dialog.set_title("Please Wait")
+        dialog.set_content_width(320)
+        # No response to close it with, and no way to dismiss it early --
+        # this is only up for as long as a real background operation is
+        # in flight, not something the user should be able to cancel out
+        # of mid-write.
+        dialog.set_can_close(False)
+        dialog.set_child(box)
+        dialog.present(self)
+        return dialog
+
+    def _on_prime_select_fixed_later(self, success, message):
+        if success:
+            self._gpu_toast("GPU driver preference switched to On-Demand.")
+        else:
+            self._gpu_toast(
+                "Couldn't switch GPU driver preference to On-Demand"
+                + (f": {message}" if message else "")
+                + " -- you may need to run 'sudo prime-select on-demand' "
+                "yourself before rebooting."
+            )
+
+    def _reboot_now(self):
         try:
             subprocess.run(["systemctl", "reboot"], timeout=5)
         except (OSError, subprocess.TimeoutExpired) as e:
