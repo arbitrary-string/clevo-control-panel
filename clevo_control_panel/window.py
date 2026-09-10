@@ -3,6 +3,7 @@
 import collections
 import json
 import math
+import subprocess
 import time
 from pathlib import Path
 
@@ -1199,9 +1200,33 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
         except GpuModeError as e:
             self._performance_toast(f"Couldn't switch GPU mode: {e}")
             return
-        self._performance_toast(
-            f"Requested {self._GPU_MODE_LABELS[target]} mode -- reboot to apply."
+
+        # A dialog with an explicit choice, not just a toast telling the
+        # user to go reboot themselves -- "Reboot Now" is still entirely
+        # the user's own click, same as GNOME's own Power Off/Restart
+        # menu, not something this app decides to do on its own.
+        dialog = Adw.AlertDialog(
+            heading="Reboot Required",
+            body=(
+                f"Requested {self._GPU_MODE_LABELS[target]} mode. This only "
+                "takes effect after a reboot."
+            ),
         )
+        dialog.add_response("later", "Reboot Later")
+        dialog.add_response("now", "Reboot Now")
+        dialog.set_response_appearance("now", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("later")
+        dialog.set_close_response("later")
+        dialog.connect("response", self._on_gpu_mode_reboot_response)
+        dialog.present(self)
+
+    def _on_gpu_mode_reboot_response(self, _dialog, response):
+        if response != "now":
+            return
+        try:
+            subprocess.run(["systemctl", "reboot"], timeout=5)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            self._performance_toast(f"Couldn't reboot: {e}")
 
     def _curve_point_rows(self):
         rows = []
