@@ -14,9 +14,6 @@ around the legacy brightness path's much lower cap. On boards with a
 hardware GPU MUX, also supports switching BIOS-level GPU mode
 (MSHybrid/dGPU) via a firmware NVRAM write, applied on next reboot,
 automatically steering prime-select away from an Intel-only setting
-first if needed so dGPU mode doesn't come up to a black screen, and
-keeping the Soft Brightness Plus GNOME extension enabled only in
-MSHybrid mode, since it conflicts with dGPU mode's own brightness
-control."""
+first if needed so dGPU mode doesn't come up to a black screen."""
 
-__version__ = "0.11.5"
+__version__ = "0.11.6"

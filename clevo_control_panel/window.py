@@ -31,7 +31,6 @@ from .fan_curve import FanCurveConfig, validate_curve
 from .gpu_mode import GpuModeError, detect_current_mode, switch_to as gpu_mode_switch_to
 from .performance import PerformanceMode, PerformanceModeError
 from .prime_select import query as prime_select_query, set_on_demand_async
-from . import soft_brightness_plus
 
 # Retrofuturistic instrument-panel palette for the Dashboard page only --
 # deliberately different from the rest of the app's normal libadwaita
@@ -1149,11 +1148,7 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
                 "This board can mux the panel directly to either GPU. "
                 "Switching only writes a pending firmware request -- it "
                 "never touches live GPU/display state -- and always "
-                "requires a manual reboot to actually take effect. If "
-                "installed, the Soft Brightness Plus GNOME extension is "
-                "kept enabled only in MSHybrid mode, since it visibly "
-                "conflicts with dGPU mode's own hardware brightness "
-                "control."
+                "requires a manual reboot to actually take effect."
             ),
             xalign=0,
             wrap=True,
@@ -1199,14 +1194,6 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
             f"Switch to {self._GPU_MODE_LABELS[target]} Mode (reboot required)"
         )
         self._gpu_mode_switch_target = target
-
-        # Soft Brightness Plus (the software-dimming extension MSHybrid
-        # mode needs, since this board has no real hardware brightness
-        # control on the Intel path) visibly conflicts with the direct
-        # DPCD brightness control used in dGPU mode -- keep it enabled
-        # only in the mode that actually needs it. Cheap enough to just
-        # ride along on this same periodic status refresh.
-        soft_brightness_plus.sync_to_gpu_mode(mode)
 
     def _on_gpu_mode_switch_clicked(self, _button):
         target = getattr(self, "_gpu_mode_switch_target", None)
