@@ -61,6 +61,7 @@ expected to treat as "not applicable here," not a real error.
 import ctypes
 import fcntl
 import os
+import subprocess
 
 NV01_ROOT_CLIENT = 0x41
 NV01_DEVICE_0 = 0x80
@@ -367,3 +368,22 @@ class NvidiaDpcdBacklight:
             if self.get_target_luminance_mcd() == mcd:
                 return
             raise
+
+
+def nudge_luminance_daemon():
+    """Tells the running clevo-oled-luminance daemon to immediately
+    reassert DPCD luminance mode, rather than waiting for its periodic
+    safety reassert -- see nudge-oled-luminance.sh for why this is
+    needed at all (a display refresh-rate switch silently resets the
+    panel's luminance-mode-enable bit). A pure timing optimization,
+    never required: silently does nothing if the sudoers step hasn't
+    been set up, the daemon isn't running, or this board has no NVIDIA
+    dGPU at all -- callers should never need to handle a failure here."""
+    try:
+        subprocess.run(
+            ["sudo", "-n", "/usr/lib/clevo-control-panel/nudge-oled-luminance.sh"],
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass

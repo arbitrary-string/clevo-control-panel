@@ -17,6 +17,7 @@ from .auto_profile import AutoProfileConfig, is_on_ac
 from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
 from .display import DisplayRefreshRate, DisplayRefreshRateError
+from .oled_luminance import nudge_luminance_daemon
 from .fan import FanControl, FanControlError
 from .fan_curve import STATUS_FILE, FanCurveConfig, validate_curve
 from .gpu_mode import GpuModeError, detect_current_mode, switch_to as gpu_mode_switch_to
@@ -290,6 +291,8 @@ def cmd_performance_auto_set(args):
                     DisplayRefreshRate().set_rate(hz)
                 except DisplayRefreshRateError:
                     pass  # comfort feature only; never block the rest of the switch
+                else:
+                    nudge_luminance_daemon()
 
 
 # ---- fan commands ----

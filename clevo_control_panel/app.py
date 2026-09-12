@@ -14,6 +14,7 @@ from .backend import BacklightError, KeyboardBacklight
 from .battery import ChargeThresholdError, ChargeThresholds
 from .charge_override import clear_pending_revert, get_pending_revert
 from .display import DisplayRefreshRate, DisplayRefreshRateError
+from .oled_luminance import nudge_luminance_daemon
 from .performance import PerformanceMode, PerformanceModeError
 from .power_source import PowerSourceMonitor
 from .window import ClevoControlPanelWindow
@@ -199,3 +200,12 @@ class ClevoControlPanelApp(Adw.Application):
             DisplayRefreshRate().set_rate(hz)
         except DisplayRefreshRateError:
             pass
+        else:
+            # Same DPCD-luminance-bit-reset side effect as window.py's
+            # _apply_auto_profile_now -- and the one that actually
+            # matters most in practice, since PowerSourceMonitor reports
+            # the current power source once synchronously right at app
+            # startup (see _on_power_source_changed's own comment), so
+            # this path fires on every single launch in dGPU mode, not
+            # just on a manual profile-switch toggle.
+            nudge_luminance_daemon()

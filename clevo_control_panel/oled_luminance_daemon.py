@@ -51,7 +51,19 @@ DEFAULT_MIN_NITS = 5
 DEFAULT_MAX_NITS = 500
 
 POLL_INTERVAL_SECONDS = 0.1  # cheap: one small sysfs read; DPCD traffic only on an actual change
-SAFETY_REASSERT_SECONDS = 30  # cheap independent-of-slider-activity re-check, defense in depth
+
+# Confirmed live: a refresh-rate switch resets DPCD 0x721's luminance-
+# mode-enable bit no matter what triggers it -- clevo-control-panel's own
+# refresh-rate features, but just as much GNOME Settings' Displays panel,
+# xrandr/wlr-randr, or a monitor hotplug. The various nudge_luminance_
+# daemon() call sites in this project only cover this app's own known
+# triggers; this periodic reassert is what actually covers everything
+# else, so it needs to be short enough that "everything else" doesn't
+# mean a long, silently-dim wait. One idempotent DPCD read plus one
+# 3-byte write, once a second, is negligible AUX-channel traffic --
+# cheap enough to just always be running rather than trying to detect
+# every possible cause of the reset.
+SAFETY_REASSERT_SECONDS = 1
 
 
 def _clamp_int(value, low, high, default):
@@ -136,13 +148,30 @@ class OledLuminanceDaemon:
         self.config = config or OledLuminanceConfig()
         self._stop = False
         self._last_percent = None
+        self._force_reassert = False
 
     def _install_signal_handlers(self):
         def handler(signum, frame):
             self._stop = True
 
+        def force_reassert_handler(signum, frame):
+            # Sent by the GUI right after a display-refresh-rate switch
+            # (see window.py's _apply_auto_profile_now) -- confirmed
+            # live that applying a new monitor config through Mutter
+            # resets DPCD 0x721's luminance-mode-enable bit the same
+            # way a legacy brightness change does, but silently, with
+            # no corresponding change to the backlight sysfs percentage
+            # this daemon otherwise watches for. Without this, the fix
+            # only arrives whenever SAFETY_REASSERT_SECONDS next
+            # elapses -- correct, but a needlessly dim wait. The main
+            # loop's own poll interval is already fast (0.1s), so this
+            # flag alone is enough to make the next iteration reassert
+            # immediately rather than needing an interrupted sleep.
+            self._force_reassert = True
+
         signal.signal(signal.SIGTERM, handler)
         signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGUSR1, force_reassert_handler)
 
     def _read_slider_percent(self):
         try:
@@ -210,8 +239,10 @@ class OledLuminanceDaemon:
             now = time.monotonic()
             changed = percent != self._last_percent
             due_for_safety_reassert = (now - last_reassert) >= SAFETY_REASSERT_SECONDS
-            if not (changed or due_for_safety_reassert):
+            forced = self._force_reassert
+            if not (changed or due_for_safety_reassert or forced):
                 continue
+            self._force_reassert = False
 
             try:
                 mcd = self._apply(percent)
@@ -253,6 +284,22 @@ def _open_backlight_with_retry():
 
 
 def main():
+    # Confirmed live: right after boot, _open_backlight_with_retry() below
+    # can take several seconds while the NVIDIA/display stack is still
+    # settling. OledLuminanceDaemon._install_signal_handlers() -- which
+    # gives SIGUSR1 its real meaning -- doesn't run until after that
+    # succeeds, and Python's default disposition for an unhandled SIGUSR1
+    # is to terminate the process. A GUI-triggered nudge landing during
+    # that window (very plausible at boot, since the control panel's own
+    # startup refresh-rate switch fires around the same time) would kill
+    # this process instead of nudging it, forcing systemd to restart it
+    # and redo the whole retry loop -- turning a one-nudge fix into a
+    # multi-second crash-and-restart cycle. Ignoring it here, before the
+    # retry loop even starts, closes that window; _install_signal_handlers()
+    # overrides this with the real handler once the daemon is actually
+    # ready to use it.
+    signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
     try:
         backlight = _open_backlight_with_retry()
     except NvidiaDpcdBacklightError as exc:

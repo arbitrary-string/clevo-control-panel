@@ -68,6 +68,16 @@ install -m 0755 "$REPO_ROOT/data/set-prime-select.sh" \
 install -m 0755 "$REPO_ROOT/data/setup-prime-select-sudoers.sh" \
   "$PKG_ROOT/usr/lib/clevo-control-panel/setup-prime-select-sudoers.sh"
 
+# Instant OLED-luminance reassert after a legacy-path brightness write
+# disturbs the panel's DPCD state (refresh-rate switch, or the brightness
+# slider itself -- see oled_luminance.py's nudge_luminance_daemon()).
+# Same "packaged but never auto-run" treatment as the sudoers scripts
+# above.
+install -m 0755 "$REPO_ROOT/data/nudge-oled-luminance.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/nudge-oled-luminance.sh"
+install -m 0755 "$REPO_ROOT/data/setup-oled-luminance-nudge-sudoers.sh" \
+  "$PKG_ROOT/usr/lib/clevo-control-panel/setup-oled-luminance-nudge-sudoers.sh"
+
 # Launchers.
 cat > "$PKG_ROOT/usr/bin/clevo-control-panel" <<'LAUNCHER'
 #!/usr/bin/env python3

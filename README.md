@@ -229,6 +229,16 @@ reason — same paths, just with `gpu-mode` in place of `power-profile`.
 Same again for `setup-prime-select-sudoers.sh` (`prime-select` in place
 of `power-profile`) — the safety net described in that same section.
 
+And `setup-oled-luminance-nudge-sudoers.sh` (`oled-luminance-nudge` in
+place of `power-profile`) — without it, a refresh-rate switch or a
+brightness-slider move in dGPU mode still self-corrects via the
+oled-luminance daemon's own 1-second safety reassert, just with a
+needlessly dim wait instead of an instant one. That reassert interval is
+also what actually protects you against a refresh-rate switch triggered
+some other way entirely — GNOME Settings' Displays panel, `xrandr`, a
+monitor hotplug — since the DPCD bit reset happens as a side effect of
+any Mutter mode-set, not just the ones this app triggers.
+
 ## Running
 
 ```

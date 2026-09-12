@@ -29,6 +29,7 @@ from .display import DisplayRefreshRate, DisplayRefreshRateError
 from .fan import FanControl, FanControlError
 from .fan_curve import FanCurveConfig, validate_curve
 from .gpu_mode import GpuModeError, detect_current_mode, switch_to as gpu_mode_switch_to
+from .oled_luminance import nudge_luminance_daemon
 from .performance import PerformanceMode, PerformanceModeError
 from .prime_select import query as prime_select_query, set_on_demand_async
 
@@ -890,6 +891,17 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
                 self._display_refresh.set_rate(hz)
             except DisplayRefreshRateError:
                 pass
+            else:
+                # Confirmed live: applying a new monitor config through
+                # Mutter resets DPCD 0x721's luminance-mode-enable bit
+                # in dGPU mode, the same way a legacy brightness change
+                # does -- but silently, with no backlight-percentage
+                # change for the daemon's own change-detection to
+                # notice. Without this nudge it still self-corrects via
+                # the daemon's own periodic safety reassert (every 1s),
+                # just with a needlessly dim wait instead of an instant
+                # fix.
+                nudge_luminance_daemon()
 
     def _build_mode_section(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -2150,6 +2162,22 @@ class ClevoControlPanelWindow(Adw.ApplicationWindow):
                 self.backend.set_brightness(int(value))
             except OSError as e:
                 self._toast(f"Couldn't set brightness: {e}")
+            else:
+                # Confirmed live: this legacy-path sysfs write resets
+                # DPCD 0x721's luminance-mode-enable bit in dGPU mode,
+                # same as a refresh-rate switch does (see
+                # _apply_auto_profile_now) -- including when the value
+                # written matches what's already on the panel, which is
+                # exactly what happens the moment this window opens:
+                # _refresh_status() syncs the slider to the real
+                # hardware value, and going from the widget's initial 0
+                # to that value fires this same handler. The oled-
+                # luminance daemon's own change-detection only watches
+                # the sysfs percentage, so an unchanged-value write like
+                # that one otherwise goes unnoticed until its 1s safety
+                # reassert. Nudging unconditionally here closes that gap
+                # instead of only covering the refresh-rate case.
+                nudge_luminance_daemon()
         return GLib.SOURCE_REMOVE
 
     def _refresh_status(self):
