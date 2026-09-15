@@ -16,4 +16,4 @@ hardware GPU MUX, also supports switching BIOS-level GPU mode
 automatically steering prime-select away from an Intel-only setting
 first if needed so dGPU mode doesn't come up to a black screen."""
 
-__version__ = "0.11.10"
+__version__ = "0.11.11"

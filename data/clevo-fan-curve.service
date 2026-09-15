@@ -35,27 +35,27 @@ ExecStart=/usr/bin/clevo-fan-curve-daemon
 Restart=on-failure
 RestartSec=2
 
-ReadWritePaths=/var/lib/clevo-control-panel
-
+# Confirmed live (2026-09-14): on a modern Ubuntu install, this daemon
+# fails outright with "Failed to drop capabilities: Operation not
+# permitted" / status=218/CAPABILITIES, before its own code ever runs.
+# Root cause: ReadWritePaths=, CapabilityBoundingSet=, and the several
+# Protect*= directives previously here all need systemd to transparently
+# create a private, unprivileged user namespace to implement them for a
+# non-root --user unit like this one -- and Ubuntu's `unprivileged_userns`
+# AppArmor restriction (on by default) denies exactly that (confirmed via
+# `sys_admin`/`setpcap` DENIED entries in the audit log). This isn't
+# fixable by scoping a permissive AppArmor profile to this daemon's own
+# binary: the failing prctl()/unshare() calls happen in systemd's own
+# pre-exec child setup, *before* this daemon's binary is ever exec'd, so
+# no profile attached to that binary can ever be consulted for them.
+# Removed the directives that need this mechanism; kept everything below
+# that's enforced via seccomp/prctl instead, which doesn't need a private
+# namespace and isn't affected by this restriction at all. This daemon
+# already runs as the plain logged-in user with no elevated privileges to
+# begin with, so the removed directives were pure defense-in-depth against
+# a hypothetical future bug in this code, not a response to any privilege
+# it currently holds.
 NoNewPrivileges=yes
-CapabilityBoundingSet=
-ProtectSystem=strict
-# read-only, not the stricter full hide: this daemon has no legitimate
-# reason to write anywhere under /home (all its state lives under
-# /var/lib/clevo-control-panel, already covered by ReadWritePaths=
-# below), so read-only preserves the real security property (no writes
-# to user data) without breaking a repo-checkout install, where
-# /usr/bin/clevo-fan-curve-daemon is a symlink into $HOME rather than a
-# real file under /usr -- confirmed live: ProtectHome=yes made systemd
-# unable to even locate the executable to exec ("203/EXEC"), since the
-# symlink target is hidden before the exec ever happens.
-ProtectHome=read-only
-PrivateTmp=yes
-ProtectClock=yes
-ProtectHostname=yes
-ProtectKernelLogs=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 RestrictNamespaces=yes
 LockPersonality=yes
